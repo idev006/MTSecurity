@@ -1,0 +1,145 @@
+"""CameraManager — lifecycle controller for all CameraThreads."""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from cryptography.fernet import Fernet
+
+from ingestion.camera_thread import CameraThread
+from ingestion.frame_buffer import FrameBuffer
+from protocol.mtp import MTPMessage, MTPMsgType
+from ssot.state_registry import StateRegistry
+
+if TYPE_CHECKING:
+    from protocol.message_bus import MessageBus
+    from ssot.config_service import ConfigService
+
+logger = logging.getLogger(__name__)
+
+
+class CameraManager:
+    """
+    Manages all CameraThread instances.
+
+    - start_all(): reads active cameras from ConfigService, starts a thread each
+    - stop_all(): signals all threads to stop gracefully
+    - Subscribes to CONFIG_CHANGED so camera add/remove/update takes effect live
+
+    Supports both RTSP and local webcam sources transparently.
+    """
+
+    def __init__(
+        self,
+        buffer: FrameBuffer,
+        config_svc: "ConfigService",
+        state_reg: StateRegistry,
+        bus: "MessageBus",
+        encryption_key: bytes,
+    ) -> None:
+        self._buffer = buffer
+        self._config = config_svc
+        self._state = state_reg
+        self._bus = bus
+        self._fernet = Fernet(encryption_key)
+        self._threads: dict[int, CameraThread] = {}
+
+    async def start_all(self) -> None:
+        cameras = await self._config.get_active_cameras()
+        for cam in cameras:
+            await self._start_camera(cam)
+
+        self._bus.subscribe(MTPMsgType.CONFIG_CHANGED, self._on_config_changed)
+        logger.info("CameraManager: started %d camera threads", len(self._threads))
+
+    async def stop_all(self) -> None:
+        for thread in self._threads.values():
+            thread.stop()
+        for cid, thread in self._threads.items():
+            thread.join(timeout=5)
+            logger.info("Camera %d thread stopped", cid)
+        self._threads.clear()
+
+    async def start_camera(self, camera_id: int) -> None:
+        cam = await self._config.get_camera(camera_id)
+        if cam and cam.is_active:
+            await self._start_camera(cam)
+
+    def stop_camera(self, camera_id: int) -> None:
+        thread = self._threads.pop(camera_id, None)
+        if thread:
+            thread.stop()
+            self._buffer.remove(camera_id)
+            logger.info("Camera %d stopped", camera_id)
+
+    # ── Internal ──────────────────────────────────────────────────────────────
+
+    async def _start_camera(self, cam) -> None:
+        """Start a CameraThread for the given Camera ORM object."""
+        camera_id = cam.id
+        if camera_id in self._threads and self._threads[camera_id].is_alive():
+            return   # already running
+
+        source_type = getattr(cam, "source_type", "rtsp")
+        rtsp_url: str | None = None
+
+        if source_type == "webcam":
+            device_index = cam.device_index
+            if device_index is None:
+                logger.error("Camera %d (webcam): device_index not set", camera_id)
+                return
+            thread = CameraThread(
+                camera_id=camera_id,
+                buffer=self._buffer,
+                state_reg=self._state,
+                bus=self._bus,
+                source_type="webcam",
+                device_index=device_index,
+                target_fps=cam.fps,
+            )
+        else:
+            # RTSP — decrypt URL before passing to thread
+            if not cam.rtsp_url_encrypted:
+                logger.error("Camera %d (rtsp): rtsp_url_encrypted is null", camera_id)
+                return
+            try:
+                rtsp_url = self._fernet.decrypt(cam.rtsp_url_encrypted.encode()).decode()
+            except Exception:
+                logger.error("Camera %d: failed to decrypt RTSP URL", camera_id)
+                return
+            thread = CameraThread(
+                camera_id=camera_id,
+                buffer=self._buffer,
+                state_reg=self._state,
+                bus=self._bus,
+                source_type="rtsp",
+                rtsp_url=rtsp_url,
+                target_fps=cam.fps,
+            )
+
+        self._threads[camera_id] = thread
+        thread.start()
+
+    async def _on_config_changed(self, msg: MTPMessage) -> None:
+        payload = msg.payload
+        if payload.get("scope") != "camera":
+            return
+
+        camera_id = payload.get("entity_id")
+        if camera_id is None:
+            return
+
+        changes = payload.get("changes", {})
+
+        if changes.get("is_active") is False:
+            self.stop_camera(camera_id)
+            return
+
+        if "is_active" in changes or "rtsp_url_encrypted" in changes or "device_index" in changes:
+            self.stop_camera(camera_id)
+            await self.start_camera(camera_id)
+
+    @property
+    def active_count(self) -> int:
+        return sum(1 for t in self._threads.values() if t.is_alive())

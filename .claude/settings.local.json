@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(D:\\\\dev\\\\MTSecurity\\\\my_env\\\\Scripts\\\\python.exe --version)",
+      "PowerShell(& \"D:\\\\dev\\\\MTSecurity\\\\my_env\\\\Scripts\\\\python.exe\" --version)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "WebFetch(domain:daisyui.com)",
+      "Bash(D:/dev/MTSecurity/my_env/Scripts/pytest tests/unit/ -v --tb=short)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/unit/ -v --tb=short)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/ -v --tb=short)",
+      "Bash(D:/dev/MTSecurity/my_env/Scripts/python -c ' *)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/unit/test_websocket_hub.py tests/unit/test_api_auth.py tests/unit/test_api_cameras.py -v --tb=short)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/unit/test_websocket_hub.py tests/unit/test_api_auth.py tests/unit/test_api_cameras.py -v --tb=short -W ignore::DeprecationWarning)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/ -v --tb=short -W ignore::DeprecationWarning)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/ -q --tb=short -W ignore::DeprecationWarning)",
+      "Bash(PYTHONPATH=. D:/dev/MTSecurity/my_env/Scripts/pytest tests/ --tb=short -W ignore::DeprecationWarning)",
+      "Bash(del \"D:\\\\dev\\\\MTSecurity\\\\my_workspace\\\\.gitignore\")",
+      "PowerShell(Get-ChildItem \"D:\\\\dev\\\\MTSecurity\\\\my_env\" -Recurse -File | Where-Object { $_.LastWriteTime -gt \\(Get-Date\\).AddMinutes\\(-60\\) } | Select-Object FullName, LastWriteTime)"
+    ]
+  }
+}
