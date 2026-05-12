@@ -116,6 +116,15 @@
         <!-- Nav -->
         <ul class="menu menu-sm flex-1 p-2 gap-0.5">
           <li>
+            <RouterLink to="/pilot" active-class="active" class="gap-2.5">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              </svg>
+              Pilot's Console
+            </RouterLink>
+          </li>
+          <li>
             <RouterLink to="/dashboard" active-class="active" class="gap-2.5">
               <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -132,6 +141,14 @@
               </svg>
               Cameras
               <span class="badge badge-sm ml-auto font-mono">{{ cameras.total }}</span>
+            </RouterLink>
+          </li>
+          <li>
+            <RouterLink to="/zones" active-class="active" class="gap-2.5">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+              </svg>
+              Zones & Rules
             </RouterLink>
           </li>
           <li>
@@ -185,11 +202,35 @@
         </div>
       </aside>
     </div>
+
+    <!-- ── Toast Notifications ─────────────────────────────────────────────── -->
+    <div class="toast toast-bottom toast-end z-[100] font-mono pointer-events-none">
+      <TransitionGroup enter-active-class="transition duration-300 ease-out"
+                       enter-from-class="transform translate-y-8 opacity-0"
+                       enter-to-class="transform translate-y-0 opacity-100"
+                       leave-active-class="transition duration-200 ease-in"
+                       leave-from-class="transform translate-y-0 opacity-100"
+                       leave-to-class="transform translate-y-8 opacity-0">
+        <div v-for="t in activeToasts" :key="t.__toastId"
+          class="alert shadow-lg pointer-events-auto cursor-pointer"
+          :class="t.severity === 'critical' ? 'alert-error' : (t.severity === 'high' ? 'alert-warning' : 'alert-info')"
+          @click="gotoEvents"
+        >
+          <svg class="h-6 w-6 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <div>
+            <h3 class="font-bold text-sm">{{ (t.behavior || 'ALERT').replace(/_/g, ' ').toUpperCase() }} (CAM {{ t.camera_id }})</h3>
+            <div class="text-xs opacity-80">{{ (t.severity || 'UNKNOWN').toUpperCase() }} ALERT</div>
+          </div>
+        </div>
+      </TransitionGroup>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCamerasStore } from '@/stores/cameras'
@@ -262,5 +303,20 @@ onUnmounted(() => {
 async function handleLogout() {
   await auth.logout()
   router.push('/login')
+}
+
+// ── Toasts ────────────────────────────────────────────────────────────────
+const activeToasts = ref<any[]>([])
+watch(() => events.latestAlert, (newAlert) => {
+  if (newAlert) {
+    const t = { ...newAlert, __toastId: Date.now() + Math.random() }
+    activeToasts.value.push(t)
+    setTimeout(() => {
+      activeToasts.value = activeToasts.value.filter(x => x.__toastId !== t.__toastId)
+    }, 6000)
+  }
+})
+function gotoEvents() {
+  router.push('/events')
 }
 </script>

@@ -28,5 +28,8 @@ class Rule(TimestampMixin, Base):
     # Alert severity
     severity: Mapped[str] = mapped_column(String(16), default="medium", nullable=False)
 
+    # Advanced Logic — JSON Tree for AND/OR conditions
+    logic: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     zone: Mapped["Zone"] = relationship(back_populates="rules")
     events: Mapped[list["Event"]] = relationship(back_populates="rule")

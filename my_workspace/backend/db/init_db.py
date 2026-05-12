@@ -28,8 +28,10 @@ async def _migrate(engine: AsyncEngine) -> None:
         # Phase: webcam support
         "ALTER TABLE cameras ADD COLUMN source_type VARCHAR(16) NOT NULL DEFAULT 'rtsp'",
         "ALTER TABLE cameras ADD COLUMN device_index INTEGER",
-        # rtsp_url_encrypted is now nullable — SQLite can't ALTER NOT NULL after the fact;
-        # existing rows already have a value so this is safe to leave as-is.
+        # Phase: hotplug / index-stability
+        "ALTER TABLE cameras ADD COLUMN device_name VARCHAR(256)",
+        # Phase: Advanced Rule Engine (Logic Trees)
+        "ALTER TABLE rules ADD COLUMN logic TEXT",
     ]
     async with engine.begin() as conn:
         for sql in migrations:

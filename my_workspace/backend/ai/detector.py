@@ -47,6 +47,9 @@ def postprocess_yolo(
     outputs: list[np.ndarray],
     orig_w: int,
     orig_h: int,
+    pad_top: int = 0,
+    pad_left: int = 0,
+    scale: float = 1.0,
     input_size: int = 640,
     confidence_threshold: float = 0.6,
     iou_threshold: float = 0.45,
@@ -87,19 +90,16 @@ def postprocess_yolo(
     if len(boxes_xywh) == 0:
         return []
 
-    # Convert cx,cy,w,h (input-space) → x1,y1,x2,y2 (normalised)
-    scale_x = 1.0 / input_size
-    scale_y = 1.0 / input_size
+    # Convert cx,cy,w,h (input-space) → x1,y1,x2,y2 (normalised to orig image)
+    cx = (boxes_xywh[:, 0] - pad_left) / scale
+    cy = (boxes_xywh[:, 1] - pad_top) / scale
+    bw = boxes_xywh[:, 2] / scale
+    bh = boxes_xywh[:, 3] / scale
 
-    cx = boxes_xywh[:, 0] * scale_x
-    cy = boxes_xywh[:, 1] * scale_y
-    bw = boxes_xywh[:, 2] * scale_x
-    bh = boxes_xywh[:, 3] * scale_y
-
-    x1 = np.clip(cx - bw / 2, 0, 1)
-    y1 = np.clip(cy - bh / 2, 0, 1)
-    x2 = np.clip(cx + bw / 2, 0, 1)
-    y2 = np.clip(cy + bh / 2, 0, 1)
+    x1 = np.clip((cx - bw / 2) / orig_w, 0.0, 1.0)
+    y1 = np.clip((cy - bh / 2) / orig_h, 0.0, 1.0)
+    x2 = np.clip((cx + bw / 2) / orig_w, 0.0, 1.0)
+    y2 = np.clip((cy + bh / 2) / orig_h, 0.0, 1.0)
 
     # NMS
     boxes_xyxy = np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)

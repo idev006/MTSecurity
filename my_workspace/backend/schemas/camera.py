@@ -21,6 +21,7 @@ class CameraCreate(BaseModel):
 
     # Webcam fields (required when source_type == "webcam")
     device_index: int | None = Field(None, ge=0, le=9, description="Local webcam index 0-9")
+    device_name: str | None = Field(None, max_length=256, description="WMI friendly name fingerprint")
 
     location: str | None = None
     resolution_width: int = Field(1920, ge=320, le=3840)
@@ -52,6 +53,7 @@ class CameraRead(BaseModel):
     name: str
     source_type: str
     device_index: int | None
+    device_name: str | None
     location: str | None
     is_active: bool
     resolution_width: int
@@ -77,3 +79,4 @@ class WebcamDevice(BaseModel):
     """Available local webcam detected by probing device indices."""
     index: int
     label: str
+    device_name: str

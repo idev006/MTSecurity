@@ -121,8 +121,11 @@ class AIPipeline:
             # Postprocess
             detections = postprocess_yolo(
                 outputs,
-                orig_w=frame.width,
-                orig_h=frame.height,
+                orig_w=rgb.shape[1],
+                orig_h=rgb.shape[0],
+                pad_top=pad_top,
+                pad_left=pad_left,
+                scale=scale,
                 confidence_threshold=self._confidence,
                 target_classes=self._target_classes,
             ) if outputs else []

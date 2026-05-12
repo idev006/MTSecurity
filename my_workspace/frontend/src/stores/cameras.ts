@@ -57,6 +57,7 @@ export const useCamerasStore = defineStore('cameras', () => {
     source_type: 'rtsp' | 'webcam'
     rtsp_url?: string
     device_index?: number
+    device_name?: string
     location?: string
     fps?: number
   }): Promise<CameraRead> {
@@ -75,9 +76,15 @@ export const useCamerasStore = defineStore('cameras', () => {
     if (cam) cam.is_active = isActive
   }
 
+  function reset() {
+    cameras.value = []
+    statuses.value = {}
+    error.value = null
+  }
+
   return {
     cameras, statuses, loading, error,
     total, online, reconnecting, failed,
-    fetchAll, patchStatus, statusOf, addCamera, listWebcams, setActive,
+    fetchAll, patchStatus, statusOf, addCamera, listWebcams, setActive, reset,
   }
 })

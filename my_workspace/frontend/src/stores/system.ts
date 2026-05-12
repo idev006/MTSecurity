@@ -92,6 +92,12 @@ export const useSystemStore = defineStore('system', () => {
         last_frame_at: new Date().toISOString(),
       })
     }
+    if (msg.type === 'track_update') {
+      console.log(`[WS] Track update for camera ${msg.camera_id}: ${msg.data.detections?.length || 0} detections`)
+      useCamerasStore().patchStatus(msg.camera_id, {
+        tracks: msg.data.detections || [],
+      } as any)
+    }
   }
 
   function subscribeCamera(ids: number[]) {

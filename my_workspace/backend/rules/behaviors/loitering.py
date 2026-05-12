@@ -42,5 +42,6 @@ class LoiteringBehavior(RuleBehavior):
                 track_id=track.track_id,
                 dwell_seconds=round(dwell, 1),
                 centroid=track.centroid,
+                bbox=track.bbox,
             )
         return TriggerResult.no()

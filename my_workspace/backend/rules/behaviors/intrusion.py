@@ -45,5 +45,6 @@ class IntrusionBehavior(RuleBehavior):
                 confidence=track.confidence,
                 track_id=track.track_id,
                 centroid=track.centroid,
+                bbox=track.bbox,
             )
         return TriggerResult.no()

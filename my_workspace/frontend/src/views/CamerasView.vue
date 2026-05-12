@@ -23,7 +23,12 @@
             <option value="ERROR">ERROR</option>
             <option value="INACTIVE">INACTIVE</option>
           </select>
-          <button class="btn btn-xs btn-ghost font-mono" @click="cameras.fetchAll()">
+          <!-- Show overlays toggle -->
+          <div class="flex items-center gap-1.5 ml-2 border-l border-base-content/10 pl-3">
+            <input type="checkbox" v-model="showOverlays" class="toggle toggle-xs toggle-primary" title="Show/Hide AI & Zones" />
+            <span class="text-xs font-mono opacity-60">OVERLAYS</span>
+          </div>
+          <button class="btn btn-xs btn-ghost font-mono ml-2" @click="cameras.fetchAll()">
             ↻ REFRESH
           </button>
           <!-- Add webcam -->
@@ -68,16 +73,73 @@
           :class="cardBorder(cameras.statusOf(cam.id)?.state)"
           @click="selectCam(cam.id)">
 
-          <!-- Video placeholder -->
-          <div class="aspect-video bg-base-300 flex items-center justify-center relative">
-            <div class="text-center opacity-30">
+          <!-- Video area — MJPEG when ONLINE, placeholder when offline -->
+          <div class="aspect-video bg-base-300 flex items-center justify-center relative overflow-hidden transition-colors duration-300"
+               :class="{ 'ring-4 ring-inset ring-error shadow-[inset_0_0_20px_rgba(255,0,0,0.5)]': hasRecentAlert(cam.id) }">
+
+            <!-- Live MJPEG stream (browser handles multipart natively) -->
+            <img v-if="cameras.statusOf(cam.id)?.state === 'ONLINE'"
+              :src="streamUrl(cam.id)"
+              class="absolute inset-0 w-full h-full object-cover"
+              alt="live feed" />
+
+            <!-- Zones Overlay -->
+            <svg class="absolute inset-0 w-full h-full pointer-events-none"
+                 v-if="showOverlays && cameras.statusOf(cam.id)?.state === 'ONLINE'"
+                 viewBox="0 0 100 100" preserveAspectRatio="none">
+              <g v-for="z in zonesByCamera(cam.id)" :key="z.id">
+                <polygon :points="formatZonePoints(z.coordinates)"
+                         :fill="hasRecentAlert(cam.id) ? '#ff0000' : z.color"
+                         :fill-opacity="hasRecentAlert(cam.id) ? '0.4' : '0.15'"
+                         :stroke="hasRecentAlert(cam.id) ? '#ff0000' : z.color"
+                         :stroke-width="hasRecentAlert(cam.id) ? '1' : '0.6'"
+                         :stroke-dasharray="hasRecentAlert(cam.id) ? '' : '2,2'"
+                         class="transition-all duration-300" />
+                <text v-if="!hasRecentAlert(cam.id)"
+                      :x="getZoneLabelPos(z.coordinates).x + 1" 
+                      :y="getZoneLabelPos(z.coordinates).y + 3"
+                      :fill="z.color" font-size="2.5" font-family="monospace" font-weight="bold"
+                      style="text-shadow: 0px 0px 2px rgba(0,0,0,0.8);">
+                  {{ z.name }}
+                </text>
+              </g>
+            </svg>
+
+            <!-- AI Bounding Boxes overlay -->
+            <svg class="absolute inset-0 w-full h-full pointer-events-none"
+                 v-if="showOverlays && cameras.statusOf(cam.id)?.state === 'ONLINE'"
+                 viewBox="0 0 100 100" preserveAspectRatio="none">
+              <g v-for="t in (cameras.statusOf(cam.id) as any).tracks || []" :key="t.track_id">
+                <rect :x="t.bbox.x1 * 100" :y="t.bbox.y1 * 100"
+                      :width="(t.bbox.x2 - t.bbox.x1) * 100"
+                      :height="(t.bbox.y2 - t.bbox.y1) * 100"
+                      fill="none" :stroke="hasRecentAlert(cam.id) ? '#ff0000' : '#00A3FF'" :stroke-width="hasRecentAlert(cam.id) ? '0.8' : '0.5'" />
+                <rect :x="t.bbox.x1 * 100" 
+                      :y="(t.bbox.y1 * 100) < 5 ? (t.bbox.y1 * 100) : (t.bbox.y1 * 100) - 3.5"
+                      :width="hasRecentAlert(cam.id) ? 35 : 30" height="3.5"
+                      :fill="hasRecentAlert(cam.id) ? '#ff0000' : '#00A3FF'" fill-opacity="0.8" />
+                <text :x="(t.bbox.x1 * 100) + 0.5" 
+                      :y="(t.bbox.y1 * 100) < 5 ? (t.bbox.y1 * 100) + 2.5 : (t.bbox.y1 * 100) - 1"
+                      fill="#ffffff" font-size="2.5" font-family="monospace" font-weight="bold">
+                  {{ hasRecentAlert(cam.id) ? `🚨 ${t.label.toUpperCase()}` : `${t.label.toUpperCase()}: TRK-${t.track_id} (${Math.round(t.confidence * 100)}%)` }}
+                </text>
+                <!-- Centroid dot (The exact point used for Zone intersection) -->
+                <circle :cx="((t.bbox.x1 + t.bbox.x2) / 2) * 100" 
+                        :cy="((t.bbox.y1 + t.bbox.y2) / 2) * 100" 
+                        r="0.8" :fill="hasRecentAlert(cam.id) ? '#ff0000' : '#00A3FF'" />
+              </g>
+            </svg>
+
+            <!-- Offline placeholder -->
+            <div v-else class="text-center opacity-30">
               <svg class="h-7 w-7 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                   d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
               </svg>
             </div>
+
             <!-- State badge overlay -->
-            <div class="absolute top-1.5 left-1.5 flex gap-1">
+            <div class="absolute top-1.5 left-1.5 flex gap-1 z-10">
               <span class="badge badge-xs font-mono" :class="stateBadge(cameras.statusOf(cam.id)?.state)">
                 {{ cameras.statusOf(cam.id)?.state ?? 'INACTIVE' }}
               </span>
@@ -85,10 +147,26 @@
             </div>
             <!-- FPS overlay -->
             <div v-if="cameras.statusOf(cam.id)?.fps"
-              class="absolute bottom-1.5 right-1.5 text-xs font-mono opacity-60 bg-base-100/70 px-1 rounded">
+              class="absolute bottom-1.5 right-1.5 text-xs font-mono opacity-60 bg-base-100/70 px-1 rounded z-10">
               {{ cameras.statusOf(cam.id)?.fps?.toFixed(0) }}fps
             </div>
+
+            <!-- Security Status Widget -->
+            <div v-if="cameras.statusOf(cam.id)?.state === 'ONLINE' && zonesByCamera(cam.id).length > 0"
+                 class="absolute bottom-1.5 left-1.5 flex items-center gap-1.5 px-2 py-0.5 rounded backdrop-blur-md border shadow-lg transition-colors z-10"
+                 :class="hasRecentAlert(cam.id) ? 'bg-error/20 border-error text-error animate-pulse' : 'bg-base-300/80 border-success/50 text-success'">
+              <svg v-if="hasRecentAlert(cam.id)" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <svg v-else class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span class="text-[10px] font-mono font-bold tracking-wider">
+                {{ hasRecentAlert(cam.id) ? 'ALERT: INTRUSION' : `SECURE (${zonesByCamera(cam.id).length} ZONE)` }}
+              </span>
+            </div>
           </div>
+
 
           <!-- Info strip -->
           <div class="px-2 py-1.5 flex items-center justify-between gap-1">
@@ -197,7 +275,7 @@
             <button v-for="dev in availableWebcams" :key="dev.index"
               class="btn btn-sm font-mono"
               :class="form.device_index === dev.index ? 'btn-primary' : 'btn-outline'"
-              @click="form.device_index = dev.index">
+              @click="form.device_index = dev.index; form.device_name = dev.device_name">
               {{ dev.index }}
             </button>
           </div>
@@ -261,14 +339,53 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { useCamerasStore } from '@/stores/cameras'
+import { useAuthStore } from '@/stores/auth'
+import { useEventsStore } from '@/stores/events'
 import type { WebcamDevice } from '@/api/client'
 
 const cameras = useCamerasStore()
+const auth = useAuthStore()
+const eventsStore = useEventsStore()
 const layout = ref<'grid' | 'list'>('grid')
 const filterState = ref('')
+const showOverlays = ref(true)
+
+interface ZoneRead {
+  id: number; camera_id: number; name: string
+  coordinates: string; color: string; is_active: boolean
+}
+
+const zones = ref<ZoneRead[]>([])
+
+// Timer to force re-evaluation of alert flashes
+const now = ref(Date.now())
+let flashTimer: ReturnType<typeof setInterval>
+
+onMounted(async () => {
+  cameras.fetchAll()
+  flashTimer = setInterval(() => now.value = Date.now(), 500)
+  try {
+    const r = await fetch('/api/v1/zones', {
+      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+    })
+    if (r.ok) zones.value = await r.json()
+  } catch (e) {
+    console.error('Failed to load zones', e)
+  }
+})
+
+onUnmounted(() => {
+  clearInterval(flashTimer)
+})
+
+// Build authenticated stream URL for MJPEG <img> tag
+function streamUrl(cameraId: number): string {
+  const token = localStorage.getItem('access_token') ?? ''
+  return `/api/v1/cameras/${cameraId}/stream?token=${token}`
+}
 
 const filtered = computed(() =>
   cameras.cameras.filter(c =>
@@ -281,6 +398,42 @@ const webcamCount = computed(() =>
 )
 
 function selectCam(_id: number) { /* Phase 5: open live stream modal */ }
+
+// ── Overlays & Alert rendering ───────────────────────────────────────────────
+
+function zonesByCamera(cameraId: number) {
+  return zones.value.filter(z => z.camera_id === cameraId && z.is_active)
+}
+
+function formatZonePoints(coords: string | [number, number][]) {
+  try {
+    const pts = typeof coords === 'string' ? JSON.parse(coords) as [number, number][] : coords
+    return pts.map((p: any) => `${p[0] * 100},${p[1] * 100}`).join(' ')
+  } catch {
+    return ''
+  }
+}
+
+function getZoneLabelPos(coords: string | [number, number][]): { x: number, y: number } {
+  try {
+    const pts = typeof coords === 'string' ? JSON.parse(coords) as [number, number][] : coords
+    if (!pts || pts.length === 0) return { x: 0, y: 0 }
+    // Find the point closest to top-left to place the label
+    const topPt = pts.reduce((min: any, p: any) => (p[0]+p[1] < min[0]+min[1]) ? p : min, pts[0])
+    return { x: topPt[0] * 100, y: topPt[1] * 100 }
+  } catch {
+    return { x: 0, y: 0 }
+  }
+}
+
+function hasRecentAlert(cameraId: number): boolean {
+  // Use `now` ref so this reactively updates and clears the flash after 3s
+  const currentMs = now.value
+  const recent = eventsStore.events.find(e => e.camera_id === cameraId)
+  if (!recent) return false
+  const ageSecs = (currentMs - new Date(recent.timestamp).getTime()) / 1000
+  return ageSecs < 3.0 // Flash red for 3 seconds after an alert
+}
 
 // ── Enable / Disable toggle ───────────────────────────────────────────────────
 
@@ -307,12 +460,13 @@ const form = ref({
   name: '',
   location: '',
   device_index: null as number | null,
+  device_name: null as string | null,
   fps: 15,
 })
 
 async function openAddWebcam() {
   formError.value = ''
-  form.value = { name: '', location: '', device_index: null, fps: 15 }
+  form.value = { name: '', location: '', device_index: null, device_name: null, fps: 15 }
   availableWebcams.value = []
   webcamModal.value?.showModal()
   probing.value = true
@@ -320,6 +474,7 @@ async function openAddWebcam() {
     availableWebcams.value = await cameras.listWebcams()
     if (availableWebcams.value.length === 1) {
       form.value.device_index = availableWebcams.value[0].index
+      form.value.device_name = availableWebcams.value[0].device_name
     }
   } catch {
     formError.value = 'Failed to probe webcam devices'
@@ -344,6 +499,7 @@ async function submitWebcam() {
       name: form.value.name.trim(),
       location: form.value.location.trim() || undefined,
       device_index: form.value.device_index,
+      device_name: form.value.device_name ?? undefined,
       fps: form.value.fps,
     })
     closeAddWebcam()

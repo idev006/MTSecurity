@@ -30,7 +30,8 @@ def create_app(
     engine: "AsyncEngine | None" = None,
 ) -> FastAPI:
     from api.middleware.audit import AuditMiddleware
-    from api.routers import auth, cameras, events, health, rules, users, zones
+    from api.routers import auth, cameras, events, health, lpr, rules, users, zones
+    from api.routers.simulate import router as simulate_router
     from api.websocket.hub import WebSocketHub
     from api.websocket.router import router as ws_router
 
@@ -83,13 +84,15 @@ def create_app(
     app.state.ws_hub = hub
 
     # ── Routers ───────────────────────────────────────────────────────────────
-    app.include_router(health.router, prefix=_PREFIX)
-    app.include_router(auth.router,   prefix=_PREFIX)
-    app.include_router(cameras.router, prefix=_PREFIX)
-    app.include_router(zones.router,   prefix=_PREFIX)
-    app.include_router(rules.router,   prefix=_PREFIX)
-    app.include_router(events.router,  prefix=_PREFIX)
-    app.include_router(users.router,   prefix=_PREFIX)
-    app.include_router(ws_router,      prefix=_PREFIX)
+    app.include_router(health.router,    prefix=_PREFIX)
+    app.include_router(auth.router,      prefix=_PREFIX)
+    app.include_router(cameras.router,   prefix=_PREFIX)
+    app.include_router(zones.router,     prefix=_PREFIX)
+    app.include_router(rules.router,     prefix=_PREFIX)
+    app.include_router(events.router,    prefix=_PREFIX)
+    app.include_router(lpr.router,       prefix=_PREFIX)
+    app.include_router(users.router,     prefix=_PREFIX)
+    app.include_router(simulate_router,  prefix=_PREFIX)
+    app.include_router(ws_router,        prefix=_PREFIX)
 
     return app

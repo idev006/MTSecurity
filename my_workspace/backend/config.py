@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     encryption_key: SecretStr = Field(..., description="Fernet key — generate with Fernet.generate_key()")
 
     # ── AI ───────────────────────────────────────────────────────────────────
-    model_path: Path = BASE_DIR / "data" / "models" / "yolov11n.xml"
+    model_path: Path = BASE_DIR / "data" / "models" / "yolo11n.xml"
     model_device: str = "CPU"          # "CPU" | "GPU" | "AUTO"
     ai_confidence_threshold: float = 0.6
     ai_queue_max_wip: int = 2          # max concurrent AI inferences

@@ -28,16 +28,17 @@ async def list_rules(db: DBDep, zone_id: int | None = None) -> list[Rule]:
 @router.post("", response_model=RuleRead, status_code=status.HTTP_201_CREATED,
              dependencies=[require("rules:create")])
 async def create_rule(body: RuleCreate, request: Request, db: DBDep, user: CurrentUser) -> Rule:
-    schedule_json = json.dumps(body.schedule) if body.schedule else None
+    data = body.model_dump()
     rule = Rule(
-        zone_id=body.zone_id,
-        name=body.name,
-        behavior=body.behavior,
-        confidence_threshold=body.confidence_threshold,
-        dwell_threshold_seconds=body.dwell_threshold_seconds,
-        cooldown_seconds=body.cooldown_seconds,
-        severity=body.severity,
-        schedule=schedule_json,
+        zone_id=data["zone_id"],
+        name=data["name"],
+        behavior=data["behavior"],
+        confidence_threshold=data["confidence_threshold"],
+        dwell_threshold_seconds=data["dwell_threshold_seconds"],
+        cooldown_seconds=data["cooldown_seconds"],
+        severity=data["severity"],
+        schedule=json.dumps(data["schedule"]) if data["schedule"] else None,
+        logic=json.dumps(data["logic"]) if data["logic"] else None,
     )
     db.add(rule)
     await db.flush()
@@ -63,6 +64,8 @@ async def update_rule(
     data = body.model_dump(exclude_none=True)
     if "schedule" in data:
         data["schedule"] = json.dumps(data["schedule"])
+    if "logic" in data:
+        data["logic"] = json.dumps(data["logic"])
     rule = await request.app.state.config_svc.update_rule(rule_id, data, actor=user.username)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")

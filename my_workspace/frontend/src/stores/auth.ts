@@ -25,6 +25,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    // Clear camera store so MJPEG <img> src tags are removed immediately
+    const { useCamerasStore } = await import('@/stores/cameras')
+    useCamerasStore().reset()
   }
 
   async function fetchMe() {
@@ -37,3 +40,4 @@ export const useAuthStore = defineStore('auth', () => {
 
   return { user, token, isAuthenticated, username, role, userInitial, login, logout, fetchMe }
 })
+

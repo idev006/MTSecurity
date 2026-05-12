@@ -22,15 +22,22 @@ export const useEventsStore = defineStore('events', () => {
     }
   }
 
-  // Called by WebSocket when ALERT_FIRED arrives — prepend without re-fetching
+  const latestAlert = ref<EventRead | null>(null)
+
   function prependAlert(event: EventRead) {
     events.value = [event, ...events.value].slice(0, 200)
+    latestAlert.value = event
   }
 
   async function acknowledge(id: number, note?: string) {
     await eventsApi.acknowledge(id, note)
     const ev = events.value.find(e => e.id === id)
     if (ev) ev.status = 'ACKNOWLEDGED'
+  }
+
+  async function ackAll() {
+    const newEvents = events.value.filter(e => e.status === 'NEW')
+    await Promise.all(newEvents.map(e => acknowledge(e.id)))
   }
 
   async function silence(id: number, duration_seconds = 300) {
@@ -46,7 +53,7 @@ export const useEventsStore = defineStore('events', () => {
   }
 
   return {
-    events, loading, error, newCount, recentAlerts,
-    fetchRecent, prependAlert, acknowledge, silence, escalate,
+    events, loading, error, newCount, recentAlerts, latestAlert,
+    fetchRecent, prependAlert, acknowledge, ackAll, silence, escalate,
   }
 })

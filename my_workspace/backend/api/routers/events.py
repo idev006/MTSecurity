@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 
 from api.deps import CurrentUser, DBDep, require
@@ -82,6 +83,23 @@ async def get_event(event_id: int, request: Request, db: DBDep, user: CurrentUse
     if allowed is not None and event.camera_id not in allowed:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
     return _to_read(event, base_url)
+
+
+@router.get("/{event_id}/snapshot", dependencies=[require("events:read")])
+async def get_snapshot(event_id: int, request: Request, db: DBDep, user: CurrentUser) -> FileResponse:
+    event = await db.get(Event, event_id)
+    if event is None or not event.snapshot_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot not found")
+    
+    allowed = user.camera_ids()
+    if allowed is not None and event.camera_id not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+        
+    path = request.app.state.cfg.snapshot_dir / event.snapshot_path
+    if not path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot file missing on disk")
+        
+    return FileResponse(path, media_type="image/jpeg")
 
 
 # ── Acknowledge ───────────────────────────────────────────────────────────────

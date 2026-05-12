@@ -82,6 +82,7 @@ class AlertFiredPayload(_Payload):
     alert_id: int
     rule_name: str
     camera_id: int
+    behavior: str
     severity: str               # "low", "medium", "high", "critical"
     snapshot_url: str | None
     clip_url: str | None

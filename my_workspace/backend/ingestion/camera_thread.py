@@ -28,8 +28,8 @@ _RTSP_BACKOFF = [5, 10, 20, 40, 60, 60, 60]
 _WEBCAM_BACKOFF = [2, 2, 5, 5, 10, 10, 10]
 _MAX_RETRIES = 10
 
-# Use DirectShow on Windows for faster webcam open/probe
-_WEBCAM_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+# Default backend for webcam (let OpenCV decide, DSHOW often fails by index)
+_WEBCAM_BACKEND = cv2.CAP_ANY
 
 
 class CameraThread(threading.Thread):

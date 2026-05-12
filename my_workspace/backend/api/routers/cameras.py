@@ -1,24 +1,20 @@
-"""Cameras router — CRUD + runtime status + webcam probe."""
-
-from __future__ import annotations
-
 import asyncio
 import logging
 import sys
 
-import cv2
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from api.deps import CurrentUser, DBDep, require
+from ingestion.webcam_enumerator import EnumeratedDevice, enumerate_webcams
 from models.camera import Camera
 from schemas.camera import CameraCreate, CameraRead, CameraStatus, CameraUpdate, WebcamDevice
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/cameras", tags=["cameras"])
 
-_WEBCAM_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+_WEBCAM_BACKEND = None  # handled inside webcam_enumerator
 
 
 def _encrypt(url: str, key: str) -> str:
@@ -27,23 +23,16 @@ def _encrypt(url: str, key: str) -> str:
 
 # ── Webcam probe (blocking I/O — run in executor) ────────────────────────────
 
-def _probe_webcams() -> list[WebcamDevice]:
-    """Check device indices 0-9 synchronously (called via run_in_executor)."""
-    found: list[WebcamDevice] = []
-    for i in range(10):
-        cap = cv2.VideoCapture(i, _WEBCAM_BACKEND)
-        if cap.isOpened():
-            found.append(WebcamDevice(index=i, label=f"Webcam {i}"))
-        cap.release()
-    return found
-
-
 @router.get("/webcams", response_model=list[WebcamDevice],
             dependencies=[require("cameras:read")])
 async def list_available_webcams() -> list[WebcamDevice]:
-    """Probe local device indices 0-9 and return available webcams."""
+    """Probe local device indices 0-9 and return available webcams with device_name."""
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _probe_webcams)
+    devices = await loop.run_in_executor(None, enumerate_webcams)
+    return [
+        WebcamDevice(index=d.index, label=d.label, device_name=d.device_name)
+        for d in devices
+    ]
 
 
 # ── List ──────────────────────────────────────────────────────────────────────
@@ -72,6 +61,7 @@ async def create_camera(body: CameraCreate, request: Request, db: DBDep, user: C
             source_type="rtsp",
             rtsp_url_encrypted=encrypted,
             device_index=None,
+            device_name=None,
             location=body.location,
             resolution_width=body.resolution_width,
             resolution_height=body.resolution_height,
@@ -93,6 +83,7 @@ async def create_camera(body: CameraCreate, request: Request, db: DBDep, user: C
             source_type="webcam",
             rtsp_url_encrypted=None,
             device_index=body.device_index,
+            device_name=body.device_name,  # store fingerprint
             location=body.location,
             resolution_width=body.resolution_width,
             resolution_height=body.resolution_height,
@@ -170,3 +161,65 @@ async def camera_status(camera_id: int, request: Request, user: CurrentUser) -> 
         last_frame_at=cam_state.last_frame_at,
         error_msg=cam_state.error_msg,
     )
+
+
+# ── MJPEG stream ──────────────────────────────────────────────────────────────
+
+import asyncio as _asyncio
+
+import jwt as _jwt
+from fastapi import Query as _Query
+from fastapi.responses import StreamingResponse
+
+
+@router.get("/{camera_id}/stream")
+async def mjpeg_stream(
+    camera_id: int,
+    request: Request,
+    token: str = _Query(..., description="JWT access token (same as ?token= used for WebSocket)"),
+) -> StreamingResponse:
+    """Push a continuous MJPEG stream from FrameBuffer.
+
+    Auth is via ``?token=<access_token>`` because browser ``<img>`` tags
+    cannot send Authorization headers.
+    The stream ends automatically when the client disconnects.
+    """
+    # ── Validate token manually (same as WS endpoint) ────────────────────────
+    cfg = request.app.state.cfg
+    try:
+        payload = _jwt.decode(
+            token,
+            cfg.jwt_secret_key.get_secret_value(),
+            algorithms=[cfg.jwt_algorithm],
+        )
+    except _jwt.ExpiredSignatureError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token expired")
+    except _jwt.InvalidTokenError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token")
+
+    if payload.get("type") != "access":
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong token type")
+
+    # ── Stream frames ─────────────────────────────────────────────────────────
+    frame_buffer = request.app.state.frame_buffer
+
+    async def generate():
+        boundary = b"--frame"
+        while not await request.is_disconnected():
+            frame = frame_buffer.get(camera_id)
+            if frame is None:
+                await _asyncio.sleep(0.05)
+                continue
+            yield (
+                boundary + b"\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + frame.data
+                + b"\r\n"
+            )
+            await _asyncio.sleep(1 / 30)  # cap at 30 fps
+
+    return StreamingResponse(
+        generate(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+

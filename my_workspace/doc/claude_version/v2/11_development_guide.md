@@ -122,16 +122,16 @@ Tasks:
 เป้าหมาย: ระบบส่ง LINE alert เมื่อมีคนเข้าโซน
 
 Tasks:
-  [ ] rules/behaviors/intrusion.py      — polygon point-in-polygon
-  [ ] rules/behaviors/loitering.py      — dwell time accumulator
-  [ ] rules/behaviors/line_crossing.py  — tripwire crossing detection
-  [ ] rules/rule_engine.py              — subscribe TRACK_UPDATE → evaluate
-  [ ] rules/zone_manager.py             — load zones จาก ConfigService
-  [ ] rules/schedule_manager.py         — time-based rule activation
-  [ ] alerts/alert_manager.py           — debounce + cooldown (TTLCache)
-  [ ] alerts/snapshot.py                — annotate frame → JPEG
-  [ ] alerts/notifications/line_messaging.py
-  [ ] alerts/notifications/webhook_sender.py
+  [x] rules/behaviors/intrusion.py      — polygon point-in-polygon
+  [x] rules/behaviors/loitering.py      — dwell time accumulator
+  [x] rules/behaviors/line_crossing.py  — tripwire crossing detection
+  [x] rules/rule_engine.py              — subscribe TRACK_UPDATE → evaluate
+  [x] rules/zone_manager.py             — load zones จาก ConfigService
+  [x] rules/schedule_manager.py         — time-based rule activation
+  [x] alerts/alert_manager.py           — debounce + cooldown (TTLCache)
+  [x] alerts/snapshot.py                — annotate frame → JPEG
+  [x] alerts/notifications/line_messaging.py
+  [x] alerts/notifications/webhook_sender.py
 
 ทดสอบ Phase 3 ผ่านเมื่อ:
   ✓ คนเดินเข้าโซน → LINE Notify ส่งได้ภายใน 3 วินาที
@@ -174,16 +174,16 @@ Tasks:
 Stack   : Vue 3 + TypeScript + DaisyUI + Pinia + Vue Router
 
 Tasks:
-  [ ] Vue project setup (Vite + TypeScript + DaisyUI + Tailwind)
-  [ ] Login page + JWT storage (Pinia auth store)
-  [ ] Vue Router setup (/ = console, /login, /history)
-  [ ] WebSocket composable (useAlertSocket, useCameraSocket)
-  [ ] Camera grid component (DaisyUI card + badge)
-  [ ] Primary feed component + overlay (canvas bounding box, zone)
-  [ ] Alert Queue component (DaisyUI alert + badge severity)
-  [ ] ACK / Silence / Escalate modal (DaisyUI modal)
-  [ ] System Health panel (DaisyUI stats)
-  [ ] Dark theme (DaisyUI theme="night" — เหมาะ console กลางคืน)
+  [x] Vue project setup (Vite + TypeScript + DaisyUI + Tailwind)
+  [x] Login page + JWT storage (Pinia auth store)
+  [x] Vue Router setup (/ = console, /login, /history)
+  [x] WebSocket composable (useAlertSocket, useCameraSocket)
+  [x] Camera grid component (DaisyUI card + badge)
+  [x] Primary feed component + overlay (canvas bounding box, zone)
+  [x] Alert Queue component (DaisyUI alert + badge severity)
+  [x] ACK / Silence / Escalate modal (DaisyUI modal)
+  [x] System Health panel (DaisyUI stats)
+  [x] Dark theme (DaisyUI theme="night" — เหมาะ console กลางคืน)
   [ ] Keyboard shortcuts (Vue onKeydown)
   [ ] Playwright E2E tests (login, alert ack, camera switch)
 

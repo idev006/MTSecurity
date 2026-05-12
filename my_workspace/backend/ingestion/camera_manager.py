@@ -73,6 +73,30 @@ class CameraManager:
             self._buffer.remove(camera_id)
             logger.info("Camera %d stopped", camera_id)
 
+    async def restart_camera(self, camera_id: int) -> None:
+        """Stop (if running) then restart a camera. Used by WebcamWatcher."""
+        self.stop_camera(camera_id)
+        await self.start_camera(camera_id)
+
+    async def remap_camera_index(self, camera_id: int, new_index: int) -> None:
+        """Update device_index in DB then restart the camera thread.
+
+        Called by WebcamWatcher when a device reappears at a different index.
+        """
+        cam = await self._config.get_camera(camera_id)
+        if cam is None:
+            logger.warning("remap_camera_index: camera %d not found", camera_id)
+            return
+        # Persist the new index via ConfigService so CameraThread uses the right device
+        await self._config.update_camera(
+            camera_id,
+            {"device_index": new_index},
+            actor="webcam-watcher",
+        )
+        self.stop_camera(camera_id)
+        await self.start_camera(camera_id)
+        logger.info("Camera %d remapped to device index %d", camera_id, new_index)
+
     # ── Internal ──────────────────────────────────────────────────────────────
 
     async def _start_camera(self, cam) -> None:

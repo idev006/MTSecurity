@@ -30,13 +30,14 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
     db: DBDep,
 ) -> User:
-    if credentials is None:
+    token = credentials.credentials if credentials else request.query_params.get("token")
+    if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
     cfg = request.app.state.cfg
     try:
         payload = decode_token(
-            credentials.credentials,
+            token,
             cfg.jwt_secret_key.get_secret_value(),
             cfg.jwt_algorithm,
         )

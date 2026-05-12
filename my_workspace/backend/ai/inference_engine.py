@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class InferenceEngine:
     def __init__(self, registry: ModelRegistry, model_name: str, model_path: Path) -> None:
         self._compiled = registry.load(model_name, model_path)
         self._infer_req = self._compiled.create_infer_request() if self._compiled else None
+        self._lock = threading.Lock()
         self._input_shape: tuple[int, int] = (640, 640)   # default YOLOv11n
 
         if self._compiled is not None:
@@ -52,13 +54,17 @@ class InferenceEngine:
 
         blob = self._preprocess(frame_rgb)
         t0 = time.perf_counter()
-        self._infer_req.infer({0: blob})
+        
+        with self._lock:
+            self._infer_req.infer({0: blob})
+            
+            outputs = [
+                self._infer_req.get_output_tensor(i).data.copy()
+                for i in range(len(self._compiled.outputs))
+            ]
+            
         elapsed_ms = (time.perf_counter() - t0) * 1000
 
-        outputs = [
-            self._infer_req.get_output_tensor(i).data.copy()
-            for i in range(len(self._compiled.outputs))
-        ]
         return outputs, elapsed_ms
 
     # ── Internal ──────────────────────────────────────────────────────────────

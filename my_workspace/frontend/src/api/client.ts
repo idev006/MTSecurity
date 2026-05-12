@@ -80,6 +80,7 @@ export interface CameraRead {
 export interface WebcamDevice {
   index: number
   label: string
+  device_name: string
 }
 
 export interface CameraStatus {
@@ -89,6 +90,7 @@ export interface CameraStatus {
   latency_ms: number
   last_frame_at: string | null
   error_msg: string | null
+  tracks: any[] | null
 }
 
 export interface EventRead {
@@ -154,6 +156,56 @@ export const eventsApi = {
     post<void>(`/events/${id}/silence`, { duration_seconds }),
   escalate: (id: number, reason: string) =>
     post<void>(`/events/${id}/escalate`, { reason }),
+}
+
+// ── Zones ─────────────────────────────────────────────────────────────────────
+export interface ZoneRead {
+  id: number
+  camera_id: number
+  name: string
+  coordinates: string // JSON
+  color: string
+}
+
+export const zonesApi = {
+  list: () => get<ZoneRead[]>('/zones'),
+  get: (id: number) => get<ZoneRead>(`/zones/${id}`),
+  create: (body: unknown) => post<ZoneRead>('/zones', body),
+  delete: (id: number) => del(`/zones/${id}`),
+}
+
+// ── LPR ───────────────────────────────────────────────────────────────────────
+export interface LPRRead {
+  id: number
+  plate: string
+  owner_name: string | null
+  description: string | null
+  is_active: boolean
+}
+
+export const lprApi = {
+  list: () => get<LPRRead[]>('/lpr'),
+  create: (body: unknown) => post<LPRRead>('/lpr', body),
+  delete: (id: number) => del(`/lpr/${id}`),
+}
+
+// ── Rules ─────────────────────────────────────────────────────────────────────
+export interface RuleRead {
+  id: number
+  camera_id: number
+  zone_id: number | null
+  name: string
+  behavior: string
+  severity: string
+  is_active: boolean
+  config: string // JSON
+}
+
+export const rulesApi = {
+  list: () => get<RuleRead[]>('/rules'),
+  get: (id: number) => get<RuleRead>(`/rules/${id}`),
+  create: (body: unknown) => post<RuleRead>('/rules', body),
+  update: (id: number, body: unknown) => patch<RuleRead>(`/rules/${id}`, body),
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

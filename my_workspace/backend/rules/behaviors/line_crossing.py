@@ -59,5 +59,6 @@ class LineCrossingBehavior(RuleBehavior):
                 track_id=track.track_id,
                 direction="entry" if direction == 1 else "exit",
                 centroid=curr,
+                bbox=track.bbox,
             )
         return TriggerResult.no()

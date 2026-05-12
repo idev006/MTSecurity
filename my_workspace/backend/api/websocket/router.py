@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Query, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
 from api.websocket.hub import WebSocketHub
 from auth.jwt_handler import decode_token
@@ -16,7 +16,6 @@ router = APIRouter(tags=["websocket"])
 @router.websocket("/ws")
 async def ws_endpoint(
     websocket: WebSocket,
-    request: Request,
     token: str = Query(..., description="JWT access token"),
 ) -> None:
     cfg = websocket.app.state.cfg

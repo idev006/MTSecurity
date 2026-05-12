@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from typing import Literal, Union, List, Any, Annotated
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -51,6 +52,16 @@ class ZoneRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+
+
+class LogicLeaf(BaseModel):
+    type: Literal["time", "space", "object", "behavior"]
+    params: dict[str, Any] = Field(default_factory=dict)
+
+class LogicNode(BaseModel):
+    operator: Literal["AND", "OR", "NOT"]
+    conditions: List[Union[LogicNode, LogicLeaf]]
+
 class RuleCreate(BaseModel):
     zone_id: int
     name: str = Field(..., min_length=1, max_length=128)
@@ -60,6 +71,7 @@ class RuleCreate(BaseModel):
     cooldown_seconds: int = Field(60, ge=10, le=3600)
     severity: str = Field("medium", pattern=r"^(low|medium|high|critical)$")
     schedule: dict | None = None
+    logic: LogicNode | LogicLeaf | None = None
 
 
 class RuleUpdate(BaseModel):
@@ -70,6 +82,7 @@ class RuleUpdate(BaseModel):
     cooldown_seconds: int | None = Field(None, ge=10, le=3600)
     severity: str | None = Field(None, pattern=r"^(low|medium|high|critical)$")
     schedule: dict | None = None
+    logic: LogicNode | LogicLeaf | None = None
 
 
 class RuleRead(BaseModel):
@@ -82,6 +95,18 @@ class RuleRead(BaseModel):
     dwell_threshold_seconds: int
     cooldown_seconds: int
     severity: str
+    schedule: dict | None = None
+    logic: LogicNode | LogicLeaf | None = None
     created_at: datetime
+
+    @field_validator("schedule", "logic", mode="before")
+    @classmethod
+    def parse_json_fields(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
 
     model_config = {"from_attributes": True}

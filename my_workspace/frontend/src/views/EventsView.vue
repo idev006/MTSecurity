@@ -91,7 +91,7 @@
                 <!-- Inline cockpit actions — no navigation required -->
                 <td>
                   <div class="flex gap-1">
-                    <a v-if="ev.snapshot_url" :href="ev.snapshot_url" target="_blank"
+                    <a v-if="ev.snapshot_url" :href="`${ev.snapshot_url}?token=${auth.token}`" target="_blank"
                       class="btn btn-xs btn-ghost font-mono" title="Snapshot">📷</a>
                     <button v-if="ev.status === 'NEW'"
                       class="btn btn-xs btn-success font-mono"
@@ -126,16 +126,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { useEventsStore } from '@/stores/events'
+import { useAuthStore } from '@/stores/auth'
 
 const events = useEventsStore()
+const auth = useAuthStore()
 const page = ref(1)
 const pageSize = 50
 const filters = ref({ severity: '', status: '', behavior: '' })
 
 watch(filters, () => { page.value = 1; load() }, { deep: true })
+onMounted(() => load())
 
 async function load() {
   const params: Record<string, string | number> = { page: page.value, page_size: pageSize }

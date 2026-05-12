@@ -19,6 +19,8 @@ class Camera(TimestampMixin, Base):
     rtsp_url_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Local webcam device index (0-9) — null for RTSP sources
     device_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Stable device fingerprint from WMI/DirectShow — survives index changes
+    device_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
     location: Mapped[str | None] = mapped_column(String(256), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     resolution_width: Mapped[int] = mapped_column(Integer, default=1920, nullable=False)

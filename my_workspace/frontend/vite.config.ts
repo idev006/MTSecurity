@@ -16,8 +16,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
-        '/api': { target: backendUrl, changeOrigin: true },
-        '/ws':  { target: wsUrl, ws: true },
+        '/api': {
+          target: backendUrl,
+          changeOrigin: true,
+          ws: true,           // upgrade WebSocket connections under /api (includes /api/v1/ws)
+        },
       },
     },
   }

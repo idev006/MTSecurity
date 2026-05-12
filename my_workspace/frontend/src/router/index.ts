@@ -2,12 +2,18 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', redirect: '/dashboard' },
+  { path: '/', redirect: '/pilot' },
   {
     path: '/login',
     name: 'login',
     component: () => import('@/views/LoginView.vue'),
     meta: { public: true },
+  },
+  {
+    path: '/pilot',
+    name: 'pilot',
+    component: () => import('@/views/PilotView.vue'),
+    meta: { requiresAuth: true },
   },
   {
     path: '/dashboard',
@@ -31,6 +37,12 @@ const routes: RouteRecordRaw[] = [
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/SettingsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/zones',
+    name: 'zones',
+    component: () => import('@/views/ZonesView.vue'),
     meta: { requiresAuth: true },
   },
 ]
