@@ -1,5 +1,7 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@plugin "daisyui" {
+  themes: all;
+}
 
 /* ── Typography ───────────────────────────────────────────────────────── */
 :root  { font-family: 'Chakra Petch', sans-serif; }
@@ -46,11 +48,17 @@ body   { font-family: 'Chakra Petch', sans-serif; }
   border: 1px solid oklch(var(--bc)/0.09);
 }
 
-/* ── Active nav gradient (sidebar) ───────────────────────────────────── */
-.nav-active-bg {
-  background: linear-gradient(90deg, oklch(var(--p)/0.18) 0%, oklch(var(--p)/0.05) 60%, transparent 100%);
+/* ── Sidebar nav active state — override DaisyUI menu .active ────────── */
+.menu li > a.active,
+.menu li > .router-link-active {
+  background: linear-gradient(90deg, oklch(var(--p)/0.18) 0%, oklch(var(--p)/0.05) 60%, transparent 100%) !important;
   border-left: 2px solid oklch(var(--p));
   padding-left: calc(0.75rem - 2px);
+  color: oklch(var(--bc)) !important;
+}
+.menu li > a.active svg,
+.menu li > .router-link-active svg {
+  color: oklch(var(--p));
 }
 
 /* ── Row hover-reveal actions ─────────────────────────────────────────── */
