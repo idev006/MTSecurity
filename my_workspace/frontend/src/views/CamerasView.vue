@@ -226,12 +226,12 @@
 
       <!-- ── List layout ───────────────────────────────────────────────── -->
       <div v-else class="card bg-base-100 border border-base-300 shadow-none overflow-hidden">
-        <table class="table table-sm">
+        <table class="table table-sm table-pin-rows">
           <thead>
             <tr class="font-mono text-xs opacity-50 border-b border-base-300">
               <th>ID</th><th>NAME</th><th>SOURCE</th><th>LOCATION</th>
               <th>STATE</th><th>FPS</th><th>LATENCY</th><th>LAST FRAME</th>
-              <th>ON/OFF</th><th></th>
+              <th>ON/OFF</th><th class="text-right pr-3">ACTIONS</th>
             </tr>
           </thead>
           <tbody>
@@ -266,13 +266,40 @@
                   :disabled="toggling.has(cam.id)"
                   @change="toggleCam(cam.id, ($event.target as HTMLInputElement).checked)" />
               </td>
-              <td>
-                <div v-if="cameras.statusOf(cam.id)?.error_msg"
-                  class="tooltip" :data-tip="cameras.statusOf(cam.id)?.error_msg">
-                  <svg class="h-4 w-4 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                  </svg>
+              <!-- Action buttons -->
+              <td class="text-right pr-2">
+                <div class="flex gap-1 justify-end items-center">
+                  <!-- Error info -->
+                  <div v-if="cameras.statusOf(cam.id)?.error_msg"
+                    class="tooltip tooltip-left" :data-tip="cameras.statusOf(cam.id)?.error_msg">
+                    <button class="btn btn-xs btn-square btn-error btn-ghost">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- View live in Pilot -->
+                  <div class="tooltip tooltip-left" data-tip="View live in Pilot">
+                    <RouterLink :to="{ path: '/pilot', query: { cam: cam.id } }"
+                      class="btn btn-xs btn-square btn-ghost">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                      </svg>
+                    </RouterLink>
+                  </div>
+                  <!-- View stream (MJPEG) in new tab -->
+                  <div class="tooltip tooltip-left" data-tip="Open stream">
+                    <a :href="streamUrl(cam.id)" target="_blank"
+                      class="btn btn-xs btn-square btn-ghost"
+                      :class="cameras.statusOf(cam.id)?.state !== 'ONLINE' ? 'opacity-30' : ''">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                      </svg>
+                    </a>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -374,6 +401,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { RouterLink } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import { useCamerasStore } from '@/stores/cameras'
 import { useAuthStore } from '@/stores/auth'

@@ -16,24 +16,24 @@
           </span>
         </div>
 
-        <!-- Filters joined -->
+        <!-- Filters -->
         <div class="ml-auto flex items-center gap-1.5 flex-wrap">
           <div class="join">
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity" @change="onFilterChange">
               <option value="">ALL SEV</option>
               <option value="critical">CRITICAL</option>
               <option value="high">HIGH</option>
               <option value="medium">MEDIUM</option>
               <option value="low">LOW</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status" @change="onFilterChange">
               <option value="">ALL STATUS</option>
               <option value="NEW">NEW</option>
               <option value="ACKNOWLEDGED">ACK</option>
               <option value="SILENCED">SILENCED</option>
               <option value="ESCALATED">ESCALATED</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior" @change="onFilterChange">
               <option value="">ALL TYPES</option>
               <option value="intrusion">INTRUSION</option>
               <option value="loitering">LOITERING</option>
@@ -42,12 +42,14 @@
               <option value="abandoned_object">ABANDONED</option>
             </select>
           </div>
-          <button class="btn btn-square btn-xs btn-ghost opacity-60 hover:opacity-100" title="Refresh" @click="load">
-            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-          </button>
+          <div class="tooltip tooltip-left" data-tip="Refresh">
+            <button class="btn btn-square btn-xs btn-ghost opacity-60 hover:opacity-100" @click="load">
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -69,15 +71,20 @@
 
         <!-- Card header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
-          <span class="font-mono text-xs opacity-40">{{ filtered.length }} EVENTS</span>
+          <span class="font-mono text-xs opacity-40">
+            {{ events.events.length }} EVENTS
+            <span v-if="table.total.value !== null" class="opacity-70">
+              / {{ table.total.value }} TOTAL
+            </span>
+          </span>
           <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
         </div>
 
-        <div v-if="events.loading && filtered.length === 0" class="flex justify-center py-12">
+        <div v-if="events.loading && events.events.length === 0" class="flex justify-center py-12">
           <span class="loading loading-spinner loading-md opacity-30"></span>
         </div>
 
-        <div v-else-if="filtered.length === 0"
+        <div v-else-if="events.events.length === 0"
           class="flex flex-col items-center py-16 gap-2 opacity-25">
           <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
@@ -97,15 +104,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ev in filtered" :key="ev.id"
-                class="group hover border-b border-base-300/20 last:border-0 transition-colors"
-                :class="rowClass(ev)">
-                <!-- Severity strip column -->
+              <tr v-for="ev in events.events" :key="ev.id"
+                class="border-b border-base-300/20 last:border-0 transition-colors"
+                :class="[rowClass(ev), 'hover']">
+                <!-- Severity strip -->
                 <td class="p-0 w-1">
                   <div class="w-1 h-full min-h-[2.5rem]" :class="sevStripClass(ev.severity)"></div>
                 </td>
-                <td class="font-mono text-xs whitespace-nowrap opacity-60"
-                  :title="ev.occurred_at">
+                <td class="font-mono text-xs whitespace-nowrap opacity-60" :title="ev.occurred_at">
                   {{ relTime(ev.occurred_at) }}
                 </td>
                 <td class="font-mono text-xs opacity-60">{{ ev.camera_id ?? '?' }}</td>
@@ -128,40 +134,54 @@
                     </span>
                   </div>
                 </td>
-                <!-- Hover-reveal actions -->
-                <td class="text-right pr-3">
-                  <div class="flex gap-1 justify-end action-reveal">
-                    <a v-if="ev.snapshot_url" :href="`${ev.snapshot_url}?token=${auth.token}`"
-                      target="_blank" class="btn btn-xs btn-square btn-ghost" title="View snapshot">
-                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
-                      </svg>
-                    </a>
-                    <button v-if="ev.status === 'NEW'"
-                      class="btn btn-xs btn-square btn-success btn-outline"
-                      :disabled="busy.has(ev.id)" title="Acknowledge" @click="ack(ev.id)">
-                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-                      </svg>
-                    </button>
-                    <button v-if="ev.status === 'NEW' || ev.status === 'ESCALATED'"
-                      class="btn btn-xs btn-square btn-warning btn-outline"
-                      :disabled="busy.has(ev.id)" title="Silence 5 min" @click="silence(ev.id)">
-                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
-                      </svg>
-                    </button>
-                    <button v-if="ev.status === 'NEW'"
-                      class="btn btn-xs btn-square btn-error btn-outline"
-                      :disabled="busy.has(ev.id)" title="Escalate" @click="escalate(ev.id)">
-                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
-                      </svg>
-                    </button>
+                <!-- Always-visible action buttons -->
+                <td class="text-right pr-2">
+                  <div class="flex gap-1 justify-end">
+                    <div v-if="ev.snapshot_url" class="tooltip tooltip-left" data-tip="View snapshot">
+                      <a :href="`${ev.snapshot_url}?token=${auth.token}`"
+                        target="_blank" class="btn btn-xs btn-square btn-ghost">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                      </a>
+                    </div>
+                    <div class="tooltip tooltip-left" :data-tip="ev.status === 'NEW' ? 'Acknowledge' : 'Already acknowledged'">
+                      <button
+                        class="btn btn-xs btn-square"
+                        :class="ev.status === 'NEW' ? 'btn-success btn-outline' : 'btn-ghost opacity-20'"
+                        :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
+                        @click="ev.status === 'NEW' && ack(ev.id)">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="tooltip tooltip-left" data-tip="Silence 5 min">
+                      <button
+                        class="btn btn-xs btn-square"
+                        :class="(ev.status === 'NEW' || ev.status === 'ESCALATED') ? 'btn-warning btn-outline' : 'btn-ghost opacity-20'"
+                        :disabled="busy.has(ev.id) || (ev.status !== 'NEW' && ev.status !== 'ESCALATED')"
+                        @click="(ev.status === 'NEW' || ev.status === 'ESCALATED') && silence(ev.id)">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div class="tooltip tooltip-left" data-tip="Escalate">
+                      <button
+                        class="btn btn-xs btn-square"
+                        :class="ev.status === 'NEW' ? 'btn-error btn-outline' : 'btn-ghost opacity-20'"
+                        :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
+                        @click="ev.status === 'NEW' && escalate(ev.id)">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -169,16 +189,28 @@
           </table>
         </div>
 
-        <!-- Pagination -->
-        <div class="flex items-center justify-end px-4 py-2 border-t border-base-300">
+        <!-- Pagination footer -->
+        <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 flex-wrap gap-2">
+          <!-- Page size selector -->
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-xs opacity-40">ROWS</span>
+            <select class="select select-xs select-bordered font-mono w-20"
+              :value="table.pageSize.value"
+              @change="onPageSizeChange(+($event.target as HTMLSelectElement).value)">
+              <option v-for="s in table.pageSizeOptions" :key="s" :value="s">{{ s }}</option>
+            </select>
+          </div>
+
+          <!-- Page navigation -->
           <div class="join">
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="page <= 1" @click="page--; load()">← PREV</button>
+              :disabled="!table.hasPrev.value" @click="table.prevPage(load)">← PREV</button>
             <button class="join-item btn btn-xs btn-ghost font-mono pointer-events-none opacity-60">
-              PAGE {{ page }}
+              PAGE {{ table.page.value }}
+              <span v-if="table.totalPages.value" class="opacity-60">/ {{ table.totalPages.value }}</span>
             </button>
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="events.events.length < pageSize" @click="page++; load()">NEXT →</button>
+              :disabled="!table.hasNext.value" @click="table.nextPage(load)">NEXT →</button>
           </div>
         </div>
       </div>
@@ -187,30 +219,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
+import { useServerTable } from '@/composables/useServerTable'
 
-const events  = useEventsStore()
-const auth    = useAuthStore()
-const page    = ref(1)
-const pageSize = 50
+const events = useEventsStore()
+const auth   = useAuthStore()
+const table  = useServerTable({ defaultPageSize: 25 })
+
 const filters = ref({ severity: '', status: '', behavior: '' })
 
-watch(filters, () => { page.value = 1; load() }, { deep: true })
+function onFilterChange() {
+  table.reset()
+  load()
+}
+
+function onPageSizeChange(size: number) {
+  table.setPageSize(size)
+  load()
+}
+
 onMounted(() => load())
 
 async function load() {
-  const params: Record<string, string | number> = { page: page.value, page_size: pageSize }
+  const params: Record<string, string | number> = {
+    page: table.page.value,
+    page_size: table.pageSize.value,
+  }
   if (filters.value.severity) params.severity = filters.value.severity
   if (filters.value.status)   params.status   = filters.value.status
+  if (filters.value.behavior) params.behavior  = filters.value.behavior
   await events.fetchRecent(params)
-}
 
-const filtered = computed(() =>
-  events.events.filter(e => !filters.value.behavior || e.behavior === filters.value.behavior)
-)
+  // Detect "no next page" when API returns fewer rows than requested
+  if (events.events.length < table.pageSize.value) {
+    table.hasNextOverride.value = false
+  } else {
+    table.hasNextOverride.value = null
+  }
+}
 
 const busy = ref<Set<number>>(new Set())
 
