@@ -19,21 +19,24 @@
         <!-- Filters -->
         <div class="ml-auto flex items-center gap-1.5 flex-wrap">
           <div class="join">
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity">
+            <select class="join-item select select-xs select-bordered font-mono"
+              v-model="severity" @change="resetAndLoad">
               <option value="">ALL SEV</option>
               <option value="critical">CRITICAL</option>
               <option value="high">HIGH</option>
               <option value="medium">MEDIUM</option>
               <option value="low">LOW</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status">
+            <select class="join-item select select-xs select-bordered font-mono"
+              v-model="status" @change="resetAndLoad">
               <option value="">ALL STATUS</option>
               <option value="NEW">NEW</option>
               <option value="ACKNOWLEDGED">ACK</option>
               <option value="SILENCED">SILENCED</option>
               <option value="ESCALATED">ESCALATED</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior">
+            <select class="join-item select select-xs select-bordered font-mono"
+              v-model="behavior" @change="resetAndLoad">
               <option value="">ALL TYPES</option>
               <option value="intrusion">INTRUSION</option>
               <option value="loitering">LOITERING</option>
@@ -71,17 +74,15 @@
 
         <!-- Card header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
-          <span class="font-mono text-xs opacity-40">
-            {{ filtered.length }} EVENTS
-          </span>
+          <span class="font-mono text-xs opacity-40">{{ events.events.length }} EVENTS</span>
           <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
         </div>
 
-        <div v-if="events.loading && filtered.length === 0" class="flex justify-center py-12">
+        <div v-if="events.loading && events.events.length === 0" class="flex justify-center py-12">
           <span class="loading loading-spinner loading-md opacity-30"></span>
         </div>
 
-        <div v-else-if="filtered.length === 0"
+        <div v-else-if="events.events.length === 0"
           class="flex flex-col items-center py-16 gap-2 opacity-25">
           <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
@@ -101,7 +102,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ev in filtered" :key="ev.id"
+              <tr v-for="ev in events.events" :key="ev.id"
                 class="border-b border-base-300/20 last:border-0 transition-colors"
                 :class="[rowClass(ev), 'hover']">
                 <!-- Severity strip -->
@@ -145,8 +146,7 @@
                       </a>
                     </div>
                     <div class="tooltip tooltip-left" :data-tip="ev.status === 'NEW' ? 'Acknowledge' : 'Already acknowledged'">
-                      <button
-                        class="btn btn-xs btn-square"
+                      <button class="btn btn-xs btn-square"
                         :class="ev.status === 'NEW' ? 'btn-success btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
                         @click="ev.status === 'NEW' && ack(ev.id)">
@@ -156,8 +156,7 @@
                       </button>
                     </div>
                     <div class="tooltip tooltip-left" data-tip="Silence 5 min">
-                      <button
-                        class="btn btn-xs btn-square"
+                      <button class="btn btn-xs btn-square"
                         :class="(ev.status === 'NEW' || ev.status === 'ESCALATED') ? 'btn-warning btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || (ev.status !== 'NEW' && ev.status !== 'ESCALATED')"
                         @click="(ev.status === 'NEW' || ev.status === 'ESCALATED') && silence(ev.id)">
@@ -169,8 +168,7 @@
                       </button>
                     </div>
                     <div class="tooltip tooltip-left" data-tip="Escalate">
-                      <button
-                        class="btn btn-xs btn-square"
+                      <button class="btn btn-xs btn-square"
                         :class="ev.status === 'NEW' ? 'btn-error btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
                         @click="ev.status === 'NEW' && escalate(ev.id)">
@@ -190,21 +188,26 @@
         <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 flex-wrap gap-2">
           <!-- Page size selector -->
           <div class="flex items-center gap-2">
-            <span class="font-mono text-xs opacity-40">ROWS</span>
-            <select class="select select-xs select-bordered font-mono w-20" v-model="pageSize">
-              <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
-            </select>
+            <span class="font-mono text-xs opacity-40">ROWS PER PAGE</span>
+            <div class="join">
+              <button v-for="s in PAGE_SIZE_OPTIONS" :key="s"
+                class="join-item btn btn-xs font-mono"
+                :class="pageSize === s ? 'btn-neutral' : 'btn-ghost'"
+                @click="onPageSizeClick(s)">
+                {{ s }}
+              </button>
+            </div>
           </div>
 
           <!-- Page navigation -->
           <div class="join">
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="page <= 1" @click="page--; load()">← PREV</button>
+              :disabled="page <= 1" @click="prevPage">← PREV</button>
             <button class="join-item btn btn-xs btn-ghost font-mono pointer-events-none opacity-60">
               PAGE {{ page }}
             </button>
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="!hasNextPage" @click="page++; load()">NEXT →</button>
+              :disabled="!hasNextPage" @click="nextPage">NEXT →</button>
           </div>
         </div>
       </div>
@@ -213,7 +216,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
@@ -221,44 +224,51 @@ import { useAuthStore } from '@/stores/auth'
 const events = useEventsStore()
 const auth   = useAuthStore()
 
-// Pagination state
-const page         = ref(1)
-const pageSize     = ref(25)
-const pageSizeOptions = [10, 25, 50, 100]
-const hasNextPage  = ref(true)
+// ── Pagination ────────────────────────────────────────────────────────────
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+const page        = ref(1)
+const pageSize    = ref(25)
+const hasNextPage = ref(true)
 
-// Filters — severity/status go server-side; behavior stays client-side
-const filters = ref({ severity: '', status: '', behavior: '' })
-
-// Client-side behavior filter (server may not support it)
-const filtered = computed(() =>
-  filters.value.behavior
-    ? events.events.filter(e => e.behavior === filters.value.behavior)
-    : events.events
-)
-
-// Watch server-side filters: reset page and reload
-watch(
-  () => ({ s: filters.value.severity, st: filters.value.status }),
-  () => { page.value = 1; load() }
-)
-
-// Watch page size: reset page and reload
-watch(pageSize, () => { page.value = 1; load() })
+// ── Filters (all server-side — backend supports all these params) ─────────
+const severity = ref('')
+const status   = ref('')
+const behavior = ref('')
 
 onMounted(() => load())
 
+function resetAndLoad() {
+  page.value = 1
+  load()
+}
+
+function onPageSizeClick(s: number) {
+  pageSize.value = s
+  page.value = 1
+  load()
+}
+
+function prevPage() {
+  if (page.value > 1) { page.value--; load() }
+}
+
+function nextPage() {
+  if (hasNextPage.value) { page.value++; load() }
+}
+
 async function load() {
   const params: Record<string, string | number> = {
-    page: page.value,
+    page:      page.value,
     page_size: pageSize.value,
   }
-  if (filters.value.severity) params.severity = filters.value.severity
-  if (filters.value.status)   params.status   = filters.value.status
+  if (severity.value) params.severity = severity.value
+  if (status.value)   params.status   = status.value
+  if (behavior.value) params.behavior  = behavior.value
   await events.fetchRecent(params)
   hasNextPage.value = events.events.length >= pageSize.value
 }
 
+// ── Actions ───────────────────────────────────────────────────────────────
 const busy = ref<Set<number>>(new Set())
 
 async function ack(id: number) {
@@ -297,8 +307,7 @@ function relTime(iso: string) {
 
 // ── Colors ────────────────────────────────────────────────────────────────
 function rowClass(ev: any) {
-  if (ev.status === 'SILENCED') return 'opacity-40'
-  return ''
+  return ev.status === 'SILENCED' ? 'opacity-40' : ''
 }
 function sevStripClass(s: string) {
   return { critical: 'bg-error', high: 'bg-warning', medium: 'bg-info', low: 'bg-base-300' }[s] ?? 'bg-base-300'
