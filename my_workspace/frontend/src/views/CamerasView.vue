@@ -3,19 +3,38 @@
     <div class="flex flex-col gap-4">
 
       <!-- ── Toolbar ──────────────────────────────────────────────────── -->
-      <div class="flex items-center gap-3 flex-wrap">
-        <h2 class="font-mono font-semibold tracking-wide text-sm">CAMERA GRID</h2>
-        <div class="ml-auto flex items-center gap-2 flex-wrap">
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-2">
+          <svg class="h-3.5 w-3.5 text-primary opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          </svg>
+          <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">CAMERA GRID</h2>
+        </div>
+
+        <div class="ml-auto flex items-center gap-1.5 flex-wrap">
           <!-- Layout toggle -->
           <div class="join">
             <button class="btn btn-xs join-item font-mono"
-              :class="layout === 'grid' ? 'btn-active' : 'btn-ghost'"
-              @click="layout = 'grid'">GRID</button>
+              :class="layout === 'grid' ? 'btn-neutral' : 'btn-ghost'"
+              @click="layout = 'grid'">
+              <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 16 16">
+                <rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/>
+                <rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+              </svg>
+              GRID
+            </button>
             <button class="btn btn-xs join-item font-mono"
-              :class="layout === 'list' ? 'btn-active' : 'btn-ghost'"
-              @click="layout = 'list'">LIST</button>
+              :class="layout === 'list' ? 'btn-neutral' : 'btn-ghost'"
+              @click="layout = 'list'">
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+              </svg>
+              LIST
+            </button>
           </div>
-          <!-- Filter -->
+
+          <!-- State filter -->
           <select class="select select-xs select-bordered font-mono" v-model="filterState">
             <option value="">ALL STATES</option>
             <option value="ONLINE">ONLINE</option>
@@ -23,30 +42,46 @@
             <option value="ERROR">ERROR</option>
             <option value="INACTIVE">INACTIVE</option>
           </select>
-          <!-- Show overlays toggle -->
-          <div class="flex items-center gap-1.5 ml-2 border-l border-base-content/10 pl-3">
-            <input type="checkbox" v-model="showOverlays" class="toggle toggle-xs toggle-primary" title="Show/Hide AI & Zones" />
+
+          <!-- Overlays toggle -->
+          <label class="flex items-center gap-1.5 cursor-pointer px-2 py-0.5 rounded hover:bg-base-200">
+            <input type="checkbox" v-model="showOverlays" class="toggle toggle-xs toggle-primary" />
             <span class="text-xs font-mono opacity-60">OVERLAYS</span>
-          </div>
-          <button class="btn btn-xs btn-ghost font-mono ml-2" @click="cameras.fetchAll()">
-            ↻ REFRESH
+          </label>
+
+          <!-- Refresh -->
+          <button class="btn btn-xs btn-square btn-ghost opacity-60 hover:opacity-100"
+            title="Refresh" @click="cameras.fetchAll()">
+            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
           </button>
+
           <!-- Add webcam -->
-          <button class="btn btn-xs btn-primary font-mono" @click="openAddWebcam">
-            + WEBCAM
+          <button class="btn btn-xs btn-primary font-mono gap-1" @click="openAddWebcam">
+            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            WEBCAM
           </button>
         </div>
       </div>
 
       <!-- ── Summary strip ────────────────────────────────────────────── -->
-      <div class="flex gap-3 font-mono text-xs">
-        <span class="text-success">● {{ cameras.online }} ONLINE</span>
-        <span v-if="cameras.reconnecting" class="text-warning">● {{ cameras.reconnecting }} RECONN</span>
-        <span v-if="cameras.failed" class="text-error">● {{ cameras.failed }} ERROR</span>
-        <span class="opacity-40">| TOTAL {{ cameras.total }}</span>
-        <span class="opacity-40">
-          | {{ webcamCount }} WEBCAM{{ webcamCount !== 1 ? 'S' : '' }}
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="badge badge-xs badge-success font-mono gap-1">
+          <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+          {{ cameras.online }} ONLINE
         </span>
+        <span v-if="cameras.reconnecting" class="badge badge-xs badge-warning font-mono gap-1">
+          {{ cameras.reconnecting }} RECONN
+        </span>
+        <span v-if="cameras.failed" class="badge badge-xs badge-error font-mono gap-1">
+          {{ cameras.failed }} ERROR
+        </span>
+        <span class="badge badge-xs badge-ghost font-mono">{{ cameras.total }} TOTAL</span>
+        <span v-if="webcamCount" class="badge badge-xs badge-info font-mono">{{ webcamCount }} USB</span>
       </div>
 
       <!-- ── Loading ───────────────────────────────────────────────────── -->
@@ -168,16 +203,15 @@
           </div>
 
 
-          <!-- Info strip -->
-          <div class="px-2 py-1.5 flex items-center justify-between gap-1">
+          <!-- Info strip footer -->
+          <div class="px-2 py-1.5 flex items-center justify-between gap-1 border-t border-base-300 bg-base-200/40">
             <div class="min-w-0 flex-1">
               <p class="text-xs font-semibold truncate">{{ cam.name }}</p>
-              <p v-if="cam.location" class="text-xs opacity-40 truncate">{{ cam.location }}</p>
-              <p v-else-if="cam.source_type === 'webcam'" class="text-xs opacity-30 font-mono">
-                DEV {{ cam.device_index }}
+              <p class="text-[10px] opacity-40 font-mono truncate">
+                {{ cam.location || (cam.source_type === 'webcam' ? `USB DEV ${cam.device_index}` : 'RTSP') }}
               </p>
             </div>
-            <div class="flex items-center gap-1 shrink-0" @click.stop>
+            <div class="flex items-center gap-1.5 shrink-0" @click.stop>
               <input type="checkbox" class="toggle toggle-xs toggle-success"
                 :checked="cam.is_active"
                 :disabled="toggling.has(cam.id)"
@@ -535,7 +569,7 @@ function stateBadge(state?: string) {
 function cardBorder(state?: string) {
   return {
     ONLINE: 'border-success/30', RECONNECTING: 'border-warning/50',
-    ERROR: 'border-error/50', FAILED: 'border-error/50',
+    ERROR: 'border-error/60 glow-error', FAILED: 'border-error/60 glow-error',
     CONNECTING: 'border-info/30', INACTIVE: 'border-base-300',
   }[state ?? 'INACTIVE'] ?? 'border-base-300'
 }

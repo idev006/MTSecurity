@@ -1,13 +1,7 @@
-/**
- * Theme store — manages DaisyUI theme selection.
- * Persists the chosen theme to localStorage and applies it to <html data-theme>.
- * Single source of truth; avoids duplicated theme logic across views.
- */
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 
-// All 35 DaisyUI v5 built-in themes
-export const DAISY_THEMES = [
+export const ALL_THEMES = [
   'light', 'dark', 'cupcake', 'bumblebee', 'emerald', 'corporate',
   'synthwave', 'retro', 'cyberpunk', 'valentine', 'halloween', 'garden',
   'forest', 'aqua', 'lofi', 'pastel', 'fantasy', 'wireframe', 'black',
@@ -16,36 +10,26 @@ export const DAISY_THEMES = [
   'caramellatte', 'abyss', 'silk',
 ] as const
 
-export type DaisyTheme = typeof DAISY_THEMES[number]
+export type DaisyTheme = typeof ALL_THEMES[number]
 
-const STORAGE_KEY = 'mtsec_theme'
-const DEFAULT_THEME: DaisyTheme = 'dark'
+const STORAGE_KEY = 'mt-theme'
+
+function applyTheme(theme: string) {
+  document.documentElement.setAttribute('data-theme', theme)
+}
+
+// Apply saved theme immediately (before Vue mounts) to prevent flash
+const _saved = localStorage.getItem(STORAGE_KEY) ?? 'dark'
+applyTheme(_saved)
 
 export const useThemeStore = defineStore('theme', () => {
-  const current = ref<DaisyTheme>(
-    (localStorage.getItem(STORAGE_KEY) as DaisyTheme | null) ?? DEFAULT_THEME,
-  )
+  const currentTheme = ref<string>(_saved)
 
-  const isDark = computed(() =>
-    ['dark', 'synthwave', 'halloween', 'forest', 'black', 'luxury', 'dracula',
-      'night', 'coffee', 'dim', 'sunset', 'abyss', 'cyberpunk'].includes(current.value),
-  )
-
-  /** Apply a theme immediately and persist it. */
-  function setTheme(theme: DaisyTheme) {
-    current.value = theme
+  function setTheme(theme: string) {
+    currentTheme.value = theme
+    applyTheme(theme)
     localStorage.setItem(STORAGE_KEY, theme)
-    _apply(theme)
   }
 
-  /** Restore from localStorage on app boot. */
-  function init() {
-    _apply(current.value)
-  }
-
-  function _apply(theme: DaisyTheme) {
-    document.documentElement.setAttribute('data-theme', theme)
-  }
-
-  return { current, isDark, themes: DAISY_THEMES, setTheme, init }
+  return { currentTheme, setTheme }
 })

@@ -167,17 +167,25 @@
         <div class="w-full lg:w-[400px] flex flex-col gap-4">
           
           <!-- 3. Alert Queue -->
-          <div class="card bg-base-100 border border-base-300 shadow-2xl flex-1 min-h-0 overflow-hidden">
-            <div class="p-3 border-b border-base-300 flex items-center justify-between bg-base-200/50 backdrop-blur">
+          <div class="card bg-base-100 border border-base-300 shadow-2xl flex-1 min-h-0 overflow-hidden"
+            :class="events.newCount > 0 ? 'border-error/40' : ''">
+            <!-- Queue header -->
+            <div class="p-3 border-b border-base-300 flex items-center justify-between bg-base-200/50 backdrop-blur-sm">
               <div class="flex items-center gap-2">
-                <span v-if="events.newCount > 0" class="inline-block w-2 h-2 rounded-full bg-error animate-ping"></span>
+                <span v-if="events.newCount > 0"
+                  class="inline-block w-2 h-2 rounded-full bg-error status-breathe"></span>
+                <span v-else class="inline-block w-2 h-2 rounded-full bg-success status-breathe"></span>
                 <h2 class="font-bold text-[11px] font-mono tracking-tight uppercase">
-                  Alert Queue ({{ events.newCount }})
+                  ALERT QUEUE
                 </h2>
+                <span class="badge badge-xs font-mono"
+                  :class="events.newCount > 0 ? 'badge-error' : 'badge-ghost'">
+                  {{ events.newCount }}
+                </span>
               </div>
               <div class="flex gap-1">
                 <button class="btn btn-ghost btn-xs text-[9px] font-mono opacity-50 hover:opacity-100" @click="toggleFilters">FILTERS</button>
-                <button class="btn btn-ghost btn-xs text-[9px] font-mono text-success" @click="events.ackAll()">ACK ALL</button>
+                <button class="btn btn-ghost btn-xs text-[9px] font-mono text-success hover:text-success" @click="events.ackAll()">ACK ALL</button>
               </div>
             </div>
 
@@ -195,71 +203,129 @@
               </button>
             </div>
 
+            <!-- Alert items with left color strip -->
             <div class="flex-1 overflow-y-auto divide-y divide-base-200 scrollbar-thin">
-              <div v-for="ev in filteredAlerts" :key="ev.id" 
-                class="p-4 hover:bg-base-200/50 transition-colors relative group"
-                :class="ev.status === 'NEW' ? 'bg-error/5 border-l-4 border-error' : ''">
-                
-                <div class="flex justify-between items-start mb-2">
-                  <span class="badge badge-xs font-mono border-none" :class="sevClass(ev.severity)">
-                    {{ ev.severity.toUpperCase() }}
-                  </span>
-                  <span class="text-[10px] font-mono opacity-40 group-hover:opacity-100">{{ fmtTime(ev.occurred_at) }}</span>
+              <div v-for="ev in filteredAlerts" :key="ev.id"
+                class="flex group hover:bg-base-200/40 transition-colors relative"
+                :class="ev.status !== 'NEW' ? 'opacity-50' : ''">
+                <!-- Left severity strip -->
+                <div class="w-1 shrink-0 rounded-tl rounded-bl"
+                  :class="ev.severity === 'critical' ? 'bg-error' : ev.severity === 'high' ? 'bg-warning' : ev.severity === 'medium' ? 'bg-info' : 'bg-base-300'">
                 </div>
 
-                <div class="text-sm font-black capitalize mb-1 tracking-tight">{{ ev.behavior.replace('_', ' ') }}</div>
-                <div class="text-[11px] opacity-60 mb-4 font-mono">CAM {{ ev.camera_id }} · {{ camName(ev.camera_id) }}</div>
-
-                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button class="btn btn-xs btn-outline btn-primary flex-1 font-mono text-[10px]" @click="setPrimary(ev.camera_id)">VIEW</button>
-                  <button v-if="ev.status === 'NEW'" 
-                    class="btn btn-xs btn-success flex-1 font-mono text-[10px]"
-                    :disabled="acking.has(ev.id)"
-                    @click="ack(ev.id)">ACK</button>
+                <!-- Content -->
+                <div class="flex-1 px-3 py-2.5 min-w-0">
+                  <!-- Line 1: severity badge + behavior + camera badge right -->
+                  <div class="flex items-center gap-1.5 mb-0.5">
+                    <span class="badge badge-xs font-mono shrink-0"
+                      :class="ev.severity === 'critical' ? 'badge-error' : ev.severity === 'high' ? 'badge-warning' : ev.severity === 'medium' ? 'badge-info' : 'badge-ghost'">
+                      {{ ev.severity.toUpperCase() }}
+                    </span>
+                    <span class="text-xs font-bold capitalize truncate flex-1">{{ ev.behavior.replace(/_/g, ' ') }}</span>
+                    <span class="badge badge-xs badge-ghost font-mono shrink-0">CAM {{ ev.camera_id }}</span>
+                  </div>
+                  <!-- Line 2: confidence + relative time -->
+                  <div class="flex items-center gap-2 text-[10px] font-mono opacity-40">
+                    <span>{{ (ev.confidence * 100).toFixed(0) }}% CONF</span>
+                    <span>·</span>
+                    <span>{{ fmtTime(ev.occurred_at) }}</span>
+                  </div>
+                  <!-- Hover-reveal actions -->
+                  <div class="flex gap-1.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="btn btn-xs btn-outline btn-primary font-mono text-[9px]" @click="setPrimary(ev.camera_id)">
+                      VIEW
+                    </button>
+                    <button v-if="ev.status === 'NEW'"
+                      class="btn btn-xs btn-success font-mono text-[9px]"
+                      :disabled="acking.has(ev.id)"
+                      @click="ack(ev.id)">
+                      ✓ ACK
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              <!-- Empty state -->
-              <div v-if="filteredAlerts.length === 0" class="flex flex-col items-center justify-center py-20 opacity-20">
-                <svg class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p class="text-[10px] font-mono uppercase tracking-[0.2em]">All Systems Nominal</p>
+              <!-- Empty state — full height centered, green glow -->
+              <div v-if="filteredAlerts.length === 0"
+                class="flex flex-col items-center justify-center h-full py-16 gap-3">
+                <div class="w-12 h-12 rounded-full bg-success/10 flex items-center justify-center glow-success">
+                  <svg class="h-6 w-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                </div>
+                <div class="text-center">
+                  <p class="text-xs font-mono font-bold text-success">ALL CLEAR</p>
+                  <p class="text-[10px] font-mono opacity-30 mt-0.5">NO ACTIVE ALERTS</p>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- 4. Real-time System Telemetry -->
-          <div class="card bg-base-100 border border-base-300 shadow-2xl p-4">
-            <h2 class="text-[10px] font-mono opacity-40 uppercase tracking-widest mb-4">Telemetry Stream</h2>
-            
-            <div class="space-y-4">
-              <!-- AI Load -->
-              <div>
-                <div class="flex justify-between text-[10px] font-mono mb-1.5">
-                  <span class="opacity-50">AI INFERENCE LOAD</span>
-                  <span :class="gaugeColor(system.cpuPercent)">{{ system.cpuPercent.toFixed(1) }}%</span>
-                </div>
-                <progress class="progress progress-xs w-full" :class="progressClass(system.cpuPercent)" :value="system.cpuPercent" max="100"></progress>
-              </div>
+          <!-- 4. Real-time System Telemetry — DaisyUI stats layout -->
+          <div class="card bg-base-100 border border-base-300 shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="px-4 py-2 border-b border-base-300 bg-base-200/50">
+              <p class="text-[9px] font-mono tracking-[0.3em] opacity-40 uppercase">System Telemetry</p>
+            </div>
 
-              <!-- Resource Hub -->
-              <div class="grid grid-cols-2 gap-2">
-                <div class="bg-base-200/50 p-2 rounded border border-base-300/50">
-                  <div class="text-[9px] font-mono opacity-40 uppercase">Cameras</div>
-                  <div class="text-sm font-bold font-mono text-primary">{{ system.camerasOnline }} <span class="opacity-30">/ {{ system.camerasTotal }}</span></div>
+            <!-- 3-column stats -->
+            <div class="stats stats-horizontal w-full divide-x divide-base-300 shadow-none border-b border-base-300">
+              <!-- CPU -->
+              <div class="stat px-3 py-2.5">
+                <div class="stat-title font-mono text-[9px] tracking-widest opacity-40">CPU</div>
+                <div class="stat-value text-lg font-mono" :class="gaugeColor(system.cpuPercent)">
+                  {{ system.cpuPercent.toFixed(0) }}<span class="text-xs opacity-50">%</span>
                 </div>
-                <div class="bg-base-200/50 p-2 rounded border border-base-300/50 text-right">
-                  <div class="text-[9px] font-mono opacity-40 uppercase">Uptime</div>
-                  <div class="text-sm font-bold font-mono">{{ system.uptime }}</div>
+                <div class="stat-desc w-full mt-1">
+                  <progress class="progress progress-xs w-full" :class="progressClass(system.cpuPercent)"
+                    :value="system.cpuPercent" max="100"></progress>
                 </div>
               </div>
-              
-              <!-- Shortcut Legend -->
-              <div class="pt-2 border-t border-base-300 flex flex-wrap gap-2 opacity-30 group-hover:opacity-100 transition-opacity">
-                <kbd class="kbd kbd-xs font-mono">SPACE</kbd> <span class="text-[9px] font-mono">ACK</span>
-                <kbd class="kbd kbd-xs font-mono">1-9</kbd> <span class="text-[9px] font-mono">CAM</span>
-                <kbd class="kbd kbd-xs font-mono">F</kbd> <span class="text-[9px] font-mono">FULL</span>
+              <!-- RAM -->
+              <div class="stat px-3 py-2.5">
+                <div class="stat-title font-mono text-[9px] tracking-widest opacity-40">RAM</div>
+                <div class="stat-value text-lg font-mono" :class="gaugeColor(system.ramPercent)">
+                  {{ system.ramPercent.toFixed(0) }}<span class="text-xs opacity-50">%</span>
+                </div>
+                <div class="stat-desc w-full mt-1">
+                  <progress class="progress progress-xs w-full" :class="progressClass(system.ramPercent)"
+                    :value="system.ramPercent" max="100"></progress>
+                </div>
+              </div>
+              <!-- Cameras -->
+              <div class="stat px-3 py-2.5">
+                <div class="stat-title font-mono text-[9px] tracking-widest opacity-40">CAMERAS</div>
+                <div class="stat-value text-lg font-mono"
+                  :class="system.camerasOnline === system.camerasTotal ? 'text-success' : 'text-warning'">
+                  {{ system.camerasOnline }}<span class="text-xs opacity-40">/{{ system.camerasTotal }}</span>
+                </div>
+                <div class="stat-desc font-mono text-[9px] mt-1 opacity-50">ONLINE</div>
+              </div>
+            </div>
+
+            <!-- Uptime + shortcuts -->
+            <div class="px-4 py-2.5 space-y-2">
+              <div class="flex items-center justify-between text-[10px] font-mono opacity-40">
+                <span>UPTIME</span>
+                <span>{{ system.uptime }}</span>
+              </div>
+              <div class="border-t border-base-300 pt-2 flex flex-wrap gap-x-3 gap-y-1.5 opacity-40">
+                <span class="flex items-center gap-1">
+                  <kbd class="kbd kbd-xs font-mono">SPACE</kbd>
+                  <span class="text-[9px] font-mono">ACK LATEST</span>
+                </span>
+                <span class="flex items-center gap-1">
+                  <kbd class="kbd kbd-xs font-mono">1-9</kbd>
+                  <span class="text-[9px] font-mono">SWITCH CAM</span>
+                </span>
+                <span class="flex items-center gap-1">
+                  <kbd class="kbd kbd-xs font-mono">F</kbd>
+                  <span class="text-[9px] font-mono">FULLSCREEN</span>
+                </span>
+                <span class="flex items-center gap-1">
+                  <kbd class="kbd kbd-xs font-mono">ESC</kbd>
+                  <span class="text-[9px] font-mono">CLOSE</span>
+                </span>
               </div>
             </div>
           </div>

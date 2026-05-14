@@ -7,17 +7,24 @@
 
     <div class="p-4 space-y-4 max-w-5xl mx-auto">
 
-      <!-- Camera selector -->
+      <!-- Camera selector — tabs-boxed style -->
       <div class="flex items-center gap-3 flex-wrap">
-        <span class="text-sm font-medium opacity-60">Camera:</span>
-        <button
-          v-for="cam in cameras.cameras"
-          :key="cam.id"
-          class="btn btn-sm"
-          :class="selectedCamId === cam.id ? 'btn-primary' : 'btn-ghost'"
-          @click="selectCamera(cam.id)"
-        >{{ cam.name }}</button>
-        <span v-if="cameras.cameras.length === 0" class="text-sm opacity-40">No cameras found</span>
+        <div class="tabs tabs-boxed bg-base-200 p-0.5">
+          <button
+            v-for="cam in cameras.cameras"
+            :key="cam.id"
+            class="tab font-mono text-xs gap-1.5"
+            :class="selectedCamId === cam.id ? 'tab-active' : ''"
+            @click="selectCamera(cam.id)">
+            {{ cam.name }}
+            <span class="w-1.5 h-1.5 rounded-full"
+              :class="cameras.statusOf(cam.id)?.state === 'ONLINE' ? 'bg-success' :
+                      cameras.statusOf(cam.id)?.state === 'ERROR'  ? 'bg-error' :
+                      cameras.statusOf(cam.id)?.state === 'RECONNECTING' ? 'bg-warning' :
+                      'bg-base-content/20'"></span>
+          </button>
+        </div>
+        <span v-if="cameras.cameras.length === 0" class="text-sm opacity-40 font-mono">NO CAMERAS</span>
       </div>
 
       <template v-if="selectedCam">
@@ -42,46 +49,91 @@
 
             <div v-else class="space-y-3">
               <div v-for="zone in zones" :key="zone.id"
-                class="border border-base-300 rounded-lg overflow-hidden">
+                class="border border-base-300 rounded-lg overflow-hidden"
+                :style="`border-left: 3px solid ${zone.color}`">
+
                 <!-- Zone header -->
-                <div class="flex items-center gap-2 px-3 py-2 bg-base-300/50">
-                  <span class="inline-block w-3 h-3 rounded-full flex-shrink-0" :style="`background:${zone.color}`"></span>
-                  <span class="font-semibold text-sm flex-1">{{ zone.name }}</span>
-                  <span class="badge badge-xs" :class="zone.is_active ? 'badge-success' : 'badge-ghost'">
-                    {{ zone.is_active ? 'Active' : 'Inactive' }}
+                <div class="flex items-center gap-2 px-3 py-2.5 bg-base-200/60">
+                  <span class="font-semibold text-sm flex-1 truncate">{{ zone.name }}</span>
+                  <span class="badge badge-xs font-mono"
+                    :class="zone.is_active ? 'badge-success' : 'badge-ghost'">
+                    {{ zone.is_active ? 'ACTIVE' : 'INACTIVE' }}
                   </span>
-                  <span class="text-xs opacity-40">{{ coordCount(zone) }} pts</span>
-                  <button class="btn btn-xs btn-ghost text-error" @click="deleteZone(zone.id)">Delete</button>
+                  <span class="text-xs opacity-30 font-mono">{{ coordCount(zone) }}pts</span>
+                  <button class="btn btn-xs btn-ghost btn-square text-error opacity-50 hover:opacity-100"
+                    title="Delete zone" @click="deleteZone(zone.id)">
+                    <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                  </button>
                 </div>
 
-                <!-- Rules for this zone -->
-                <div class="px-3 py-2 space-y-2">
-                    <div v-for="rule in rules.filter(r => r.zone_id === zone.id)" :key="rule.id" class="flex items-center gap-2 p-2 bg-base-300/50 rounded-lg hover:bg-base-300 transition-colors">
-                      <div :class="['badge badge-xs uppercase font-black px-2', rule.severity === 'critical' ? 'badge-error' : 'badge-info']">{{ rule.severity }}</div>
-                      <span class="text-sm font-bold">{{ rule.behavior }}</span>
-                      
-                      <!-- Advanced Logic Badge -->
-                      <div v-if="rule.logic" class="badge badge-primary badge-outline badge-xs gap-1 py-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-2 w-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                        POLICY
-                      </div>
+                <!-- Rules — 2-line card layout -->
+                <div class="px-3 py-2 space-y-1.5">
+                  <div v-for="rule in rules.filter(r => r.zone_id === zone.id)" :key="rule.id"
+                    class="group flex items-start gap-2.5 px-2.5 py-2 rounded-lg hover:bg-base-200 hover:shadow-sm transition-all duration-150">
 
-                      <span class="text-[10px] opacity-50 font-mono">cd {{ rule.cooldown_seconds }}s · dw {{ rule.dwell_threshold_seconds }}s</span>
-                      
-                      <span class="ml-auto flex gap-1">
-                        <button type="button" @click="openEditRule(rule)" class="btn btn-xs btn-ghost text-primary px-1 hover:bg-primary/10">
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-                        </button>
-                        <span class="badge badge-xs cursor-pointer" :class="rule.is_active ? 'badge-success' : 'badge-ghost'" @click="toggleRule(rule)">
-                          {{ rule.is_active ? 'On' : 'Off' }}
+                    <!-- Severity badge (vertical alignment top) -->
+                    <span class="badge badge-xs font-mono mt-0.5 shrink-0"
+                      :class="sevBadge(rule.severity)">
+                      {{ rule.severity.slice(0,4).toUpperCase() }}
+                    </span>
+
+                    <!-- Rule info — 2 lines -->
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-sm font-semibold truncate">{{ rule.name || rule.behavior }}</span>
+                        <span v-if="rule.logic"
+                          class="badge badge-primary badge-outline badge-xs gap-0.5">
+                          <svg class="h-2 w-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3"
+                              d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                          </svg>
+                          POLICY
                         </span>
-                        <button class="btn btn-xs btn-ghost text-error py-0" @click="deleteRule(rule.id)">×</button>
-                      </span>
+                      </div>
+                      <p class="font-mono text-xs opacity-40 mt-0.5 truncate">
+                        {{ rule.behavior.replace(/_/g, ' ') }} ·
+                        cd {{ rule.cooldown_seconds }}s ·
+                        dw {{ rule.dwell_threshold_seconds }}s ·
+                        {{ (rule.confidence_threshold * 100).toFixed(0) }}% conf
+                      </p>
                     </div>
-                  <!-- Add rule form -->
-                  <button class="btn btn-xs btn-ghost text-primary gap-1 mt-1"
+
+                    <!-- Action icons — hover reveal -->
+                    <div class="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button class="btn btn-xs btn-square btn-ghost text-primary"
+                        title="Edit rule" @click="openEditRule(rule)">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+                        </svg>
+                      </button>
+                      <button class="btn btn-xs btn-square btn-ghost"
+                        :class="rule.is_active ? 'text-success' : 'opacity-30'"
+                        title="Toggle rule" @click="toggleRule(rule)">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <circle cx="12" cy="12" r="8"/>
+                        </svg>
+                      </button>
+                      <button class="btn btn-xs btn-square btn-ghost text-error"
+                        title="Delete rule" @click="deleteRule(rule.id)">
+                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Add rule button -->
+                  <button class="btn btn-xs btn-ghost w-full border border-dashed border-base-300
+                                 text-primary opacity-60 hover:opacity-100 gap-1 mt-1"
                     @click="openAddRule(zone.id)">
-                    + Add Rule
+                    <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    ADD RULE
                   </button>
                 </div>
               </div>
@@ -187,6 +239,21 @@
       <div class="modal-backdrop" @click="pendingZone = null"></div>
     </div>
 
+    <!-- Delete Zone Confirm Modal -->
+    <dialog class="modal" :class="deleteZoneModalOpen && 'modal-open'">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-bold font-mono text-base">DELETE ZONE?</h3>
+        <p class="text-sm opacity-70 mt-2">This zone and all its rules will be permanently removed. This cannot be undone.</p>
+        <div class="modal-action">
+          <button class="btn btn-sm btn-ghost font-mono" @click="deleteZoneModalOpen = false; deleteTargetZoneId = null">CANCEL</button>
+          <button class="btn btn-sm btn-error font-mono" @click="confirmDeleteZone">DELETE</button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop" @click="deleteZoneModalOpen = false; deleteTargetZoneId = null">
+        <button>close</button>
+      </form>
+    </dialog>
+
   </AppLayout>
 </template>
 
@@ -197,6 +264,7 @@ import ZoneCanvas from '@/components/ZoneCanvas.vue'
 import RuleLogicBuilder from '@/components/RuleLogicBuilder.vue'
 import SchedulePicker from '@/components/SchedulePicker.vue'
 import { useCamerasStore } from '@/stores/cameras'
+import { useToastStore } from '@/stores/toast'
 
 // ── API types & calls ────────────────────────────────────────────────────────
 
@@ -236,7 +304,8 @@ async function apiDelete(path: string): Promise<void> {
 
 // ── Store & state ────────────────────────────────────────────────────────────
 
-const cameras = useCamerasStore()
+const cameras    = useCamerasStore()
+const toastStore = useToastStore()
 const selectedCamId = ref<number | null>(null)
 const zones = ref<ZoneRead[]>([])
 const rules = ref<RuleRead[]>([])
@@ -247,6 +316,8 @@ const editingRuleId = ref<number | null>(null)
 const submitting = ref(false)
 const pendingZone = ref<{ coordinates: [number, number][], color: string } | null>(null)
 const pendingZoneName = ref('')
+const deleteZoneModalOpen = ref(false)
+const deleteTargetZoneId = ref<number | null>(null)
 
 const useAdvancedLogic = ref(false)
 const logicTree = ref({
@@ -330,12 +401,20 @@ async function confirmZone() {
     zones.value = [...zones.value, zone]
     pendingZone.value = null
   } catch (e: any) {
-    alert('Failed to save zone: ' + e.message)
+    toastStore.push({ type: 'error', title: 'Save Failed', message: 'Failed to save zone: ' + e.message })
   }
 }
 
-async function deleteZone(id: number) {
-  if (!confirm('Delete this zone and all its rules?')) return
+function deleteZone(id: number) {
+  deleteTargetZoneId.value = id
+  deleteZoneModalOpen.value = true
+}
+
+async function confirmDeleteZone() {
+  const id = deleteTargetZoneId.value
+  if (!id) return
+  deleteZoneModalOpen.value = false
+  deleteTargetZoneId.value = null
   await apiDelete(`/zones/${id}`)
   zones.value = zones.value.filter(z => z.id !== id)
   rules.value = rules.value.filter(r => r.zone_id !== id)
@@ -385,7 +464,7 @@ async function submitRule() {
     addRuleZoneId.value = null
     editingRuleId.value = null
   } catch (e: any) {
-    alert('Failed to save rule: ' + e.message)
+    toastStore.push({ type: 'error', title: 'Save Failed', message: 'Failed to save rule: ' + e.message })
   } finally {
     submitting.value = false
   }
@@ -394,6 +473,15 @@ async function submitRule() {
 async function deleteRule(id: number) {
   await apiDelete(`/rules/${id}`)
   rules.value = rules.value.filter(r => r.id !== id)
+}
+
+async function toggleRule(rule: RuleRead) {
+  const updated = await apiPatch<RuleRead>(`/rules/${rule.id}`, { is_active: !rule.is_active })
+  rules.value = rules.value.map(r => r.id === updated.id ? updated : r)
+}
+
+function sevBadge(s: string) {
+  return { critical: 'badge-error', high: 'badge-warning', medium: 'badge-info', low: 'badge-ghost' }[s] ?? 'badge-ghost'
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────
