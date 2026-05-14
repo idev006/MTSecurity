@@ -76,6 +76,8 @@ Testing     : pytest (backend) · Playwright (E2E) · Vitest (frontend)
 | `14_streaming_performance.md` | 10-Camera No-Lag · Resolution Tiers · Canvas Overlay · WebSocket |
 | `15_nlq_design.md` | Natural Language Query · Claude API · RAG over Events |
 | `16_risk_register.md` | Risk Register · Timeline · Budget · อัปเดตทุกสิ้น Phase |
+| `17_test_audit_plan.md` | Test Plan · Playwright E2E · Vitest · pytest |
+| `18_uiux_overhaul.md` | World-Class UI/UX Overhaul · Mission Control Aesthetic · Theme System · Toast Store |
 
 ---
 
