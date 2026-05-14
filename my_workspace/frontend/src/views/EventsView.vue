@@ -19,21 +19,21 @@
         <!-- Filters -->
         <div class="ml-auto flex items-center gap-1.5 flex-wrap">
           <div class="join">
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity" @change="onFilterChange">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity">
               <option value="">ALL SEV</option>
               <option value="critical">CRITICAL</option>
               <option value="high">HIGH</option>
               <option value="medium">MEDIUM</option>
               <option value="low">LOW</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status" @change="onFilterChange">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status">
               <option value="">ALL STATUS</option>
               <option value="NEW">NEW</option>
               <option value="ACKNOWLEDGED">ACK</option>
               <option value="SILENCED">SILENCED</option>
               <option value="ESCALATED">ESCALATED</option>
             </select>
-            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior" @change="onFilterChange">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior">
               <option value="">ALL TYPES</option>
               <option value="intrusion">INTRUSION</option>
               <option value="loitering">LOITERING</option>
@@ -72,19 +72,16 @@
         <!-- Card header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
           <span class="font-mono text-xs opacity-40">
-            {{ events.events.length }} EVENTS
-            <span v-if="table.total.value !== null" class="opacity-70">
-              / {{ table.total.value }} TOTAL
-            </span>
+            {{ filtered.length }} EVENTS
           </span>
           <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
         </div>
 
-        <div v-if="events.loading && events.events.length === 0" class="flex justify-center py-12">
+        <div v-if="events.loading && filtered.length === 0" class="flex justify-center py-12">
           <span class="loading loading-spinner loading-md opacity-30"></span>
         </div>
 
-        <div v-else-if="events.events.length === 0"
+        <div v-else-if="filtered.length === 0"
           class="flex flex-col items-center py-16 gap-2 opacity-25">
           <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
@@ -104,7 +101,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ev in events.events" :key="ev.id"
+              <tr v-for="ev in filtered" :key="ev.id"
                 class="border-b border-base-300/20 last:border-0 transition-colors"
                 :class="[rowClass(ev), 'hover']">
                 <!-- Severity strip -->
@@ -194,23 +191,20 @@
           <!-- Page size selector -->
           <div class="flex items-center gap-2">
             <span class="font-mono text-xs opacity-40">ROWS</span>
-            <select class="select select-xs select-bordered font-mono w-20"
-              :value="table.pageSize.value"
-              @change="onPageSizeChange(+($event.target as HTMLSelectElement).value)">
-              <option v-for="s in table.pageSizeOptions" :key="s" :value="s">{{ s }}</option>
+            <select class="select select-xs select-bordered font-mono w-20" v-model="pageSize">
+              <option v-for="s in pageSizeOptions" :key="s" :value="s">{{ s }}</option>
             </select>
           </div>
 
           <!-- Page navigation -->
           <div class="join">
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="!table.hasPrev.value" @click="table.prevPage(load)">← PREV</button>
+              :disabled="page <= 1" @click="page--; load()">← PREV</button>
             <button class="join-item btn btn-xs btn-ghost font-mono pointer-events-none opacity-60">
-              PAGE {{ table.page.value }}
-              <span v-if="table.totalPages.value" class="opacity-60">/ {{ table.totalPages.value }}</span>
+              PAGE {{ page }}
             </button>
             <button class="join-item btn btn-xs btn-ghost font-mono"
-              :disabled="!table.hasNext.value" @click="table.nextPage(load)">NEXT →</button>
+              :disabled="!hasNextPage" @click="page++; load()">NEXT →</button>
           </div>
         </div>
       </div>
@@ -219,46 +213,50 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
-import { useServerTable } from '@/composables/useServerTable'
 
 const events = useEventsStore()
 const auth   = useAuthStore()
-const table  = useServerTable({ defaultPageSize: 25 })
 
+// Pagination state
+const page         = ref(1)
+const pageSize     = ref(25)
+const pageSizeOptions = [10, 25, 50, 100]
+const hasNextPage  = ref(true)
+
+// Filters — severity/status go server-side; behavior stays client-side
 const filters = ref({ severity: '', status: '', behavior: '' })
 
-function onFilterChange() {
-  table.reset()
-  load()
-}
+// Client-side behavior filter (server may not support it)
+const filtered = computed(() =>
+  filters.value.behavior
+    ? events.events.filter(e => e.behavior === filters.value.behavior)
+    : events.events
+)
 
-function onPageSizeChange(size: number) {
-  table.setPageSize(size)
-  load()
-}
+// Watch server-side filters: reset page and reload
+watch(
+  () => ({ s: filters.value.severity, st: filters.value.status }),
+  () => { page.value = 1; load() }
+)
+
+// Watch page size: reset page and reload
+watch(pageSize, () => { page.value = 1; load() })
 
 onMounted(() => load())
 
 async function load() {
   const params: Record<string, string | number> = {
-    page: table.page.value,
-    page_size: table.pageSize.value,
+    page: page.value,
+    page_size: pageSize.value,
   }
   if (filters.value.severity) params.severity = filters.value.severity
   if (filters.value.status)   params.status   = filters.value.status
-  if (filters.value.behavior) params.behavior  = filters.value.behavior
   await events.fetchRecent(params)
-
-  // Detect "no next page" when API returns fewer rows than requested
-  if (events.events.length < table.pageSize.value) {
-    table.hasNextOverride.value = false
-  } else {
-    table.hasNextOverride.value = null
-  }
+  hasNextPage.value = events.events.length >= pageSize.value
 }
 
 const busy = ref<Set<number>>(new Set())
