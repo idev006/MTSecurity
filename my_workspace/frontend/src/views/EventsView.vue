@@ -1,107 +1,167 @@
 <template>
   <AppLayout>
-    <div class="flex flex-col gap-4">
+    <div class="flex flex-col gap-3">
 
-      <!-- ── Toolbar ──────────────────────────────────────────────────── -->
-      <div class="flex items-center gap-3 flex-wrap">
-        <h2 class="font-mono font-semibold tracking-wide text-sm">EVENTS & ALERTS</h2>
-        <div class="badge font-mono text-xs"
-          :class="events.newCount > 0 ? 'badge-error animate-pulse' : 'badge-ghost'">
-          {{ events.newCount }} NEW
+      <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <div class="flex items-center gap-2">
+          <svg class="h-3.5 w-3.5 text-primary opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">EVENTS & ALERTS</h2>
+          <span class="badge badge-xs font-mono"
+            :class="events.newCount > 0 ? 'badge-error animate-pulse' : 'badge-ghost'">
+            {{ events.newCount }} NEW
+          </span>
         </div>
-        <div class="ml-auto flex items-center gap-2 flex-wrap">
-          <select class="select select-xs select-bordered font-mono" v-model="filters.severity">
-            <option value="">ALL SEV</option>
-            <option value="critical">CRITICAL</option>
-            <option value="high">HIGH</option>
-            <option value="medium">MEDIUM</option>
-            <option value="low">LOW</option>
-          </select>
-          <select class="select select-xs select-bordered font-mono" v-model="filters.status">
-            <option value="">ALL STATUS</option>
-            <option value="NEW">NEW</option>
-            <option value="ACKNOWLEDGED">ACK</option>
-            <option value="SILENCED">SILENCED</option>
-            <option value="ESCALATED">ESCALATED</option>
-          </select>
-          <select class="select select-xs select-bordered font-mono" v-model="filters.behavior">
-            <option value="">ALL TYPES</option>
-            <option value="intrusion">INTRUSION</option>
-            <option value="loitering">LOITERING</option>
-            <option value="line_crossing">LINE CROSS</option>
-            <option value="crowd_density">CROWD</option>
-            <option value="abandoned_object">ABANDONED</option>
-          </select>
-          <button class="btn btn-xs btn-ghost font-mono" @click="load">↻ REFRESH</button>
+
+        <!-- Filters joined -->
+        <div class="ml-auto flex items-center gap-1.5 flex-wrap">
+          <div class="join">
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.severity">
+              <option value="">ALL SEV</option>
+              <option value="critical">CRITICAL</option>
+              <option value="high">HIGH</option>
+              <option value="medium">MEDIUM</option>
+              <option value="low">LOW</option>
+            </select>
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.status">
+              <option value="">ALL STATUS</option>
+              <option value="NEW">NEW</option>
+              <option value="ACKNOWLEDGED">ACK</option>
+              <option value="SILENCED">SILENCED</option>
+              <option value="ESCALATED">ESCALATED</option>
+            </select>
+            <select class="join-item select select-xs select-bordered font-mono" v-model="filters.behavior">
+              <option value="">ALL TYPES</option>
+              <option value="intrusion">INTRUSION</option>
+              <option value="loitering">LOITERING</option>
+              <option value="line_crossing">LINE CROSS</option>
+              <option value="crowd_density">CROWD</option>
+              <option value="abandoned_object">ABANDONED</option>
+            </select>
+          </div>
+          <button class="btn btn-square btn-xs btn-ghost opacity-60 hover:opacity-100" title="Refresh" @click="load">
+            <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
         </div>
       </div>
 
-      <!-- ── Bulk action bar ───────────────────────────────────────────── -->
-      <div v-if="events.newCount > 0" class="alert alert-warning p-2 flex items-center gap-3">
-        <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <!-- ── Bulk action bar ──────────────────────────────────────────────── -->
+      <div v-if="events.newCount > 0"
+        class="flex items-center gap-3 px-3 py-2 rounded-lg bg-error/10 border border-error/30 backdrop-blur-sm glow-error">
+        <svg class="h-4 w-4 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
         </svg>
-        <span class="font-mono text-xs flex-1">
+        <span class="font-mono text-xs flex-1 text-error font-semibold">
           {{ events.newCount }} UNACKNOWLEDGED ALERT{{ events.newCount !== 1 ? 'S' : '' }}
         </span>
-        <button class="btn btn-xs btn-warning font-mono" @click="ackAll">ACK ALL</button>
+        <button class="btn btn-xs btn-error btn-outline font-mono" @click="ackAll">ACK ALL</button>
       </div>
 
-      <!-- ── Event table ───────────────────────────────────────────────── -->
+      <!-- ── Event table ──────────────────────────────────────────────────── -->
       <div class="card bg-base-100 border border-base-300 shadow-none overflow-hidden">
-        <div v-if="events.loading" class="flex justify-center py-12">
-          <span class="loading loading-spinner loading-md opacity-40"></span>
+
+        <!-- Card header -->
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
+          <span class="font-mono text-xs opacity-40">{{ filtered.length }} EVENTS</span>
+          <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
+        </div>
+
+        <div v-if="events.loading && filtered.length === 0" class="flex justify-center py-12">
+          <span class="loading loading-spinner loading-md opacity-30"></span>
         </div>
 
         <div v-else-if="filtered.length === 0"
-          class="flex flex-col items-center py-16 opacity-30 gap-2">
-          <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          class="flex flex-col items-center py-16 gap-2 opacity-25">
+          <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
               d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
           </svg>
-          <p class="font-mono text-sm">ALL CLEAR</p>
+          <p class="font-mono text-sm tracking-widest">ALL CLEAR</p>
+          <p class="font-mono text-xs">No events match the current filters</p>
         </div>
 
         <div v-else class="overflow-x-auto">
-          <table class="table table-sm">
+          <table class="table table-sm table-pin-rows">
             <thead>
-              <tr class="font-mono text-xs opacity-50 border-b border-base-300">
-                <th>TIME</th><th>CAM</th><th>TYPE</th><th>SEV</th>
-                <th>CONF</th><th>STATUS</th><th>ACTIONS</th>
+              <tr class="font-mono text-xs opacity-40 border-b border-base-300">
+                <th class="pl-4 w-4"></th>
+                <th>TIME</th><th>CAM</th><th>TYPE</th>
+                <th>SEV</th><th>CONF</th><th>STATUS</th><th class="text-right pr-3">ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="ev in filtered" :key="ev.id"
-                class="hover border-b border-base-300/30 last:border-0 transition-colors"
-                :class="rowClass(ev.status)">
-                <td class="font-mono text-xs whitespace-nowrap opacity-70">{{ fmtTime(ev.occurred_at) }}</td>
-                <td class="text-xs"><span class="font-mono opacity-50">CAM</span> {{ ev.camera_id ?? '?' }}</td>
-                <td class="text-xs capitalize font-semibold">{{ ev.behavior.replace(/_/g, ' ') }}</td>
+                class="group hover border-b border-base-300/20 last:border-0 transition-colors"
+                :class="rowClass(ev)">
+                <!-- Severity strip column -->
+                <td class="p-0 w-1">
+                  <div class="w-1 h-full min-h-[2.5rem]" :class="sevStripClass(ev.severity)"></div>
+                </td>
+                <td class="font-mono text-xs whitespace-nowrap opacity-60"
+                  :title="ev.occurred_at">
+                  {{ relTime(ev.occurred_at) }}
+                </td>
+                <td class="font-mono text-xs opacity-60">{{ ev.camera_id ?? '?' }}</td>
+                <td class="text-xs font-semibold capitalize">{{ ev.behavior.replace(/_/g, ' ') }}</td>
                 <td>
                   <span class="badge badge-xs font-mono" :class="sevClass(ev.severity)">
-                    {{ ev.severity.toUpperCase() }}
+                    {{ ev.severity.slice(0,4).toUpperCase() }}
                   </span>
                 </td>
-                <td class="font-mono text-xs">{{ (ev.confidence * 100).toFixed(0) }}%</td>
                 <td>
-                  <span class="badge badge-xs font-mono" :class="statusClass(ev.status)">{{ ev.status }}</span>
-                  <span v-if="ev.acknowledged_by" class="text-xs opacity-40 ml-1">{{ ev.acknowledged_by }}</span>
+                  <span class="badge badge-xs badge-ghost font-mono">
+                    {{ (ev.confidence * 100).toFixed(0) }}%
+                  </span>
                 </td>
-                <!-- Inline cockpit actions — no navigation required -->
                 <td>
-                  <div class="flex gap-1">
-                    <a v-if="ev.snapshot_url" :href="`${ev.snapshot_url}?token=${auth.token}`" target="_blank"
-                      class="btn btn-xs btn-ghost font-mono" title="Snapshot">📷</a>
+                  <div>
+                    <span class="badge badge-xs font-mono" :class="statusClass(ev.status)">{{ ev.status }}</span>
+                    <span v-if="ev.acknowledged_by" class="block text-[10px] opacity-30 font-mono mt-0.5">
+                      {{ ev.acknowledged_by }}
+                    </span>
+                  </div>
+                </td>
+                <!-- Hover-reveal actions -->
+                <td class="text-right pr-3">
+                  <div class="flex gap-1 justify-end action-reveal">
+                    <a v-if="ev.snapshot_url" :href="`${ev.snapshot_url}?token=${auth.token}`"
+                      target="_blank" class="btn btn-xs btn-square btn-ghost" title="View snapshot">
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                      </svg>
+                    </a>
                     <button v-if="ev.status === 'NEW'"
-                      class="btn btn-xs btn-success font-mono"
-                      :disabled="busy.has(ev.id)" @click="ack(ev.id)">ACK</button>
+                      class="btn btn-xs btn-square btn-success btn-outline"
+                      :disabled="busy.has(ev.id)" title="Acknowledge" @click="ack(ev.id)">
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    </button>
                     <button v-if="ev.status === 'NEW' || ev.status === 'ESCALATED'"
-                      class="btn btn-xs btn-warning font-mono"
-                      :disabled="busy.has(ev.id)" @click="silence(ev.id)">5MIN</button>
+                      class="btn btn-xs btn-square btn-warning btn-outline"
+                      :disabled="busy.has(ev.id)" title="Silence 5 min" @click="silence(ev.id)">
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                      </svg>
+                    </button>
                     <button v-if="ev.status === 'NEW'"
-                      class="btn btn-xs btn-error font-mono"
-                      :disabled="busy.has(ev.id)" @click="escalate(ev.id)">↑↑</button>
+                      class="btn btn-xs btn-square btn-error btn-outline"
+                      :disabled="busy.has(ev.id)" title="Escalate" @click="escalate(ev.id)">
+                      <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+                      </svg>
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -110,13 +170,14 @@
         </div>
 
         <!-- Pagination -->
-        <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 text-xs font-mono opacity-60">
-          <span>{{ filtered.length }} EVENTS</span>
+        <div class="flex items-center justify-end px-4 py-2 border-t border-base-300">
           <div class="join">
-            <button class="btn btn-xs join-item btn-ghost font-mono"
+            <button class="join-item btn btn-xs btn-ghost font-mono"
               :disabled="page <= 1" @click="page--; load()">← PREV</button>
-            <button class="btn btn-xs join-item btn-ghost font-mono pointer-events-none">{{ page }}</button>
-            <button class="btn btn-xs join-item btn-ghost font-mono"
+            <button class="join-item btn btn-xs btn-ghost font-mono pointer-events-none opacity-60">
+              PAGE {{ page }}
+            </button>
+            <button class="join-item btn btn-xs btn-ghost font-mono"
               :disabled="events.events.length < pageSize" @click="page++; load()">NEXT →</button>
           </div>
         </div>
@@ -131,9 +192,9 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 
-const events = useEventsStore()
-const auth = useAuthStore()
-const page = ref(1)
+const events  = useEventsStore()
+const auth    = useAuthStore()
+const page    = ref(1)
 const pageSize = 50
 const filters = ref({ severity: '', status: '', behavior: '' })
 
@@ -171,22 +232,37 @@ async function ackAll() {
   )
 }
 
+// ── Time ──────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleString([], {
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
 }
-function rowClass(s: string) {
-  return {
-    'bg-error/5 border-l-2 border-l-error': s === 'NEW',
-    'bg-warning/5 border-l-2 border-l-warning': s === 'ESCALATED',
-    'opacity-50': s === 'SILENCED',
-  }
+function relTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)  return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return fmtTime(iso)
+}
+
+// ── Colors ────────────────────────────────────────────────────────────────
+function rowClass(ev: any) {
+  if (ev.status === 'SILENCED') return 'opacity-40'
+  return ''
+}
+function sevStripClass(s: string) {
+  return { critical: 'bg-error', high: 'bg-warning', medium: 'bg-info', low: 'bg-base-300' }[s] ?? 'bg-base-300'
 }
 function sevClass(s: string) {
   return { critical: 'badge-error', high: 'badge-warning', medium: 'badge-info', low: 'badge-ghost' }[s] ?? 'badge-ghost'
 }
 function statusClass(s: string) {
-  return { NEW: 'badge-error', ACKNOWLEDGED: 'badge-success', SILENCED: 'badge-ghost', ESCALATED: 'badge-warning' }[s] ?? 'badge-ghost'
+  return {
+    NEW: 'badge-error', ACKNOWLEDGED: 'badge-success',
+    SILENCED: 'badge-ghost', ESCALATED: 'badge-warning',
+  }[s] ?? 'badge-ghost'
 }
 </script>

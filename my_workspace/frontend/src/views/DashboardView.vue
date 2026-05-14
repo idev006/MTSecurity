@@ -2,57 +2,81 @@
   <AppLayout>
     <div class="flex flex-col gap-4">
 
-      <!-- ── Instrument cluster (top row) ──────────────────────────────── -->
+      <!-- ── Instrument Cluster ────────────────────────────────────────── -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
 
-        <!-- Cameras online -->
-        <div class="stat bg-base-100 rounded-box border border-base-300 py-3 px-4">
-          <div class="stat-title text-xs font-mono opacity-60">CAMERAS ONLINE</div>
-          <div class="stat-value text-2xl font-mono" :class="cameras.failed > 0 ? 'text-warning' : 'text-success'">
-            {{ cameras.online }}<span class="text-base opacity-40">/{{ cameras.total }}</span>
+        <!-- Cameras Online -->
+        <div class="stat bg-base-100 rounded-xl border border-base-300 py-3 px-4 stat-card-hover">
+          <div class="stat-figure text-primary opacity-60">
+            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
           </div>
-          <div class="stat-desc text-xs font-mono">
-            <span v-if="cameras.reconnecting > 0" class="text-warning">{{ cameras.reconnecting }} RECONN</span>
-            <span v-if="cameras.failed > 0" class="text-error ml-1">{{ cameras.failed }} ERR</span>
-            <span v-if="cameras.reconnecting === 0 && cameras.failed === 0" class="text-success">ALL CLEAR</span>
+          <div class="stat-title font-mono text-xs tracking-widest opacity-50">CAMERAS</div>
+          <div class="stat-value font-mono text-3xl leading-tight"
+            :class="cameras.failed > 0 ? 'text-warning' : 'text-success'">
+            {{ cameras.online }}<span class="text-lg opacity-40">/{{ cameras.total }}</span>
+          </div>
+          <div class="stat-desc font-mono text-xs mt-0.5">
+            <span v-if="cameras.reconnecting > 0" class="text-warning">{{ cameras.reconnecting }} RECONN </span>
+            <span v-if="cameras.failed > 0" class="text-error">{{ cameras.failed }} ERR</span>
+            <span v-if="cameras.reconnecting === 0 && cameras.failed === 0" class="text-success">ALL ONLINE</span>
           </div>
         </div>
 
-        <!-- Active alerts -->
-        <div class="stat bg-base-100 rounded-box border py-3 px-4"
-          :class="events.newCount > 0 ? 'border-error' : 'border-base-300'">
-          <div class="stat-title text-xs font-mono opacity-60">ACTIVE ALERTS</div>
-          <div class="stat-value text-2xl font-mono" :class="events.newCount > 0 ? 'text-error' : 'text-success'">
+        <!-- Active Alerts -->
+        <div class="stat bg-base-100 rounded-xl border py-3 px-4 stat-card-hover transition-shadow duration-300"
+          :class="events.newCount > 0 ? ['border-error/50', 'glow-error'] : 'border-base-300'">
+          <div class="stat-figure opacity-60" :class="events.newCount > 0 ? 'text-error' : 'text-success'">
+            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+            </svg>
+          </div>
+          <div class="stat-title font-mono text-xs tracking-widest opacity-50">ALERTS</div>
+          <div class="stat-value font-mono text-3xl leading-tight"
+            :class="events.newCount > 0 ? 'text-error' : 'text-success'">
             {{ events.newCount }}
           </div>
-          <div class="stat-desc text-xs font-mono">
+          <div class="stat-desc font-mono text-xs mt-0.5">
             <span v-if="events.newCount > 0" class="text-error animate-pulse">REQUIRES ATTENTION</span>
             <span v-else class="text-success">NOMINAL</span>
           </div>
         </div>
 
-        <!-- CPU -->
-        <div class="stat bg-base-100 rounded-box border border-base-300 py-3 px-4">
-          <div class="stat-title text-xs font-mono opacity-60">CPU LOAD</div>
-          <div class="stat-value text-2xl font-mono" :class="gaugeColor(system.cpuPercent)">
-            {{ system.cpuPercent.toFixed(0) }}<span class="text-base opacity-40">%</span>
+        <!-- CPU Load -->
+        <div class="stat bg-base-100 rounded-xl border border-base-300 py-3 px-4 stat-card-hover">
+          <div class="stat-figure opacity-60" :class="gaugeColor(system.cpuPercent)">
+            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M9 3H7a2 2 0 00-2 2v2M9 3h6M9 3v2m6-2h2a2 2 0 012 2v2M15 3v2M3 9h2m14 0h2M3 15h2m14 0h2M9 21H7a2 2 0 01-2-2v-2m4 4h6m-6 0v-2m6 2h2a2 2 0 002-2v-2m-4 4v-2M9 9h6v6H9z"/>
+            </svg>
           </div>
-          <div class="w-full mt-1">
-            <progress class="progress progress-xs w-full"
-              :class="progressClass(system.cpuPercent)"
+          <div class="stat-title font-mono text-xs tracking-widest opacity-50">CPU LOAD</div>
+          <div class="stat-value font-mono text-3xl leading-tight" :class="gaugeColor(system.cpuPercent)">
+            {{ system.cpuPercent.toFixed(0) }}<span class="text-lg opacity-40">%</span>
+          </div>
+          <div class="w-full mt-1.5">
+            <progress class="progress progress-xs w-full" :class="progressClass(system.cpuPercent)"
               :value="system.cpuPercent" max="100"></progress>
           </div>
         </div>
 
-        <!-- RAM -->
-        <div class="stat bg-base-100 rounded-box border border-base-300 py-3 px-4">
-          <div class="stat-title text-xs font-mono opacity-60">RAM USAGE</div>
-          <div class="stat-value text-2xl font-mono" :class="gaugeColor(system.ramPercent)">
-            {{ system.ramPercent.toFixed(0) }}<span class="text-base opacity-40">%</span>
+        <!-- RAM Usage -->
+        <div class="stat bg-base-100 rounded-xl border border-base-300 py-3 px-4 stat-card-hover">
+          <div class="stat-figure opacity-60" :class="gaugeColor(system.ramPercent)">
+            <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M4 7v10M8 7v10M12 7v10M16 7v10M20 7v10M2 9h20M2 15h20"/>
+            </svg>
           </div>
-          <div class="w-full mt-1">
-            <progress class="progress progress-xs w-full"
-              :class="progressClass(system.ramPercent)"
+          <div class="stat-title font-mono text-xs tracking-widest opacity-50">RAM USAGE</div>
+          <div class="stat-value font-mono text-3xl leading-tight" :class="gaugeColor(system.ramPercent)">
+            {{ system.ramPercent.toFixed(0) }}<span class="text-lg opacity-40">%</span>
+          </div>
+          <div class="w-full mt-1.5">
+            <progress class="progress progress-xs w-full" :class="progressClass(system.ramPercent)"
               :value="system.ramPercent" max="100"></progress>
           </div>
         </div>
@@ -60,43 +84,61 @@
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        <!-- ── Recent alerts panel ─────────────────────────────────────── -->
+        <!-- ── Recent Alerts ───────────────────────────────────────────── -->
         <div class="lg:col-span-2 card bg-base-100 border border-base-300 shadow-none">
           <div class="card-body p-0">
-            <div class="flex items-center justify-between px-4 py-2 border-b border-base-300">
-              <h2 class="font-semibold text-sm tracking-wide font-mono">RECENT ALERTS</h2>
-              <div class="flex gap-2 items-center">
-                <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-40"></span>
-                <RouterLink to="/events" class="btn btn-ghost btn-xs font-mono">VIEW ALL →</RouterLink>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
+              <div class="flex items-center gap-2">
+                <svg class="h-3.5 w-3.5 text-primary opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">RECENT ALERTS</h2>
+              </div>
+              <div class="flex items-center gap-2">
+                <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
+                <RouterLink to="/events" class="btn btn-ghost btn-xs font-mono opacity-60 hover:opacity-100">
+                  VIEW ALL →
+                </RouterLink>
               </div>
             </div>
 
             <!-- Empty state -->
             <div v-if="events.recentAlerts.length === 0 && !events.loading"
-              class="flex flex-col items-center justify-center py-10 opacity-30">
-              <svg class="h-8 w-8 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              class="flex flex-col items-center justify-center py-12 gap-2 opacity-25">
+              <svg class="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2"
                   d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
-              <p class="text-xs font-mono">NO ALERTS</p>
+              <p class="font-mono text-xs tracking-widest">ALL CLEAR — NO RECENT ALERTS</p>
             </div>
 
+            <!-- Table -->
             <div v-else class="overflow-x-auto">
               <table class="table table-xs">
                 <thead>
-                  <tr class="font-mono text-xs opacity-50">
-                    <th>TIME</th><th>CAM</th><th>TYPE</th><th>SEV</th><th>STATUS</th><th></th>
+                  <tr class="font-mono text-xs opacity-40">
+                    <th class="pl-5">TIME</th><th>CAM</th><th>TYPE</th>
+                    <th>SEV</th><th>STATUS</th><th></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="ev in events.recentAlerts" :key="ev.id"
-                    class="hover" :class="ev.status === 'NEW' ? 'bg-error/5' : ''">
-                    <td class="font-mono text-xs opacity-60">{{ fmtTime(ev.occurred_at) }}</td>
-                    <td class="text-xs">{{ ev.camera_id ?? '—' }}</td>
-                    <td class="text-xs capitalize">{{ ev.behavior.replace('_', ' ') }}</td>
+                    class="group hover"
+                    :class="[rowSevClass(ev.severity), ev.status === 'NEW' ? 'row-new' : '']">
+                    <td class="font-mono text-xs opacity-55 pl-5"
+                      :title="ev.occurred_at">
+                      {{ relTime(ev.occurred_at) }}
+                    </td>
+                    <td class="font-mono text-xs">{{ ev.camera_id ?? '—' }}</td>
+                    <td class="text-xs capitalize font-semibold">
+                      {{ ev.behavior.replace(/_/g, ' ') }}
+                    </td>
                     <td>
                       <span class="badge badge-xs font-mono" :class="sevClass(ev.severity)">
-                        {{ ev.severity.toUpperCase() }}
+                        {{ ev.severity.slice(0,4).toUpperCase() }}
                       </span>
                     </td>
                     <td>
@@ -104,12 +146,16 @@
                         {{ ev.status }}
                       </span>
                     </td>
-                    <td>
+                    <td class="text-right pr-3">
                       <button v-if="ev.status === 'NEW'"
-                        class="btn btn-xs btn-ghost font-mono"
+                        class="btn btn-xs btn-square btn-success btn-outline action-reveal"
+                        :class="{ 'opacity-100': acking.has(ev.id) }"
                         :disabled="acking.has(ev.id)"
+                        title="Acknowledge"
                         @click="ack(ev.id)">
-                        ACK
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+                        </svg>
                       </button>
                     </td>
                   </tr>
@@ -119,47 +165,76 @@
           </div>
         </div>
 
-        <!-- ── Camera status panel ────────────────────────────────────── -->
+        <!-- ── Camera Status ───────────────────────────────────────────── -->
         <div class="card bg-base-100 border border-base-300 shadow-none">
           <div class="card-body p-0">
-            <div class="flex items-center justify-between px-4 py-2 border-b border-base-300">
-              <h2 class="font-semibold text-sm tracking-wide font-mono">CAMERA STATUS</h2>
-              <RouterLink to="/cameras" class="btn btn-ghost btn-xs font-mono">GRID →</RouterLink>
+
+            <!-- Header -->
+            <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
+              <div class="flex items-center gap-2">
+                <svg class="h-3.5 w-3.5 text-primary opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">CAMERA STATUS</h2>
+              </div>
+              <RouterLink to="/cameras" class="btn btn-ghost btn-xs font-mono opacity-60 hover:opacity-100">GRID →</RouterLink>
             </div>
 
-            <div v-if="cameras.loading" class="flex justify-center py-8">
-              <span class="loading loading-spinner loading-sm opacity-40"></span>
+            <div v-if="cameras.loading" class="flex justify-center py-10">
+              <span class="loading loading-spinner loading-sm opacity-30"></span>
+            </div>
+
+            <div v-else-if="cameras.cameras.length === 0"
+              class="flex justify-center py-10 opacity-25">
+              <p class="font-mono text-xs">NO CAMERAS CONFIGURED</p>
             </div>
 
             <div v-else class="divide-y divide-base-300">
               <div v-for="cam in cameras.cameras" :key="cam.id"
-                class="flex items-center justify-between px-4 py-2 hover:bg-base-200/50 transition-colors">
-                <div class="flex items-center gap-2 min-w-0">
-                  <span class="inline-block w-2 h-2 rounded-full shrink-0"
-                    :class="dotColor(cameras.statusOf(cam.id)?.state)"></span>
-                  <span class="text-xs truncate">{{ cam.name }}</span>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <span v-if="cameras.statusOf(cam.id)?.fps"
-                    class="text-xs font-mono opacity-50">
-                    {{ cameras.statusOf(cam.id)?.fps?.toFixed(0) }}fps
-                  </span>
-                  <span class="badge badge-xs font-mono"
-                    :class="stateBadge(cameras.statusOf(cam.id)?.state)">
-                    {{ cameras.statusOf(cam.id)?.state ?? 'INACTIVE' }}
-                  </span>
-                </div>
-              </div>
+                class="flex items-center gap-3 px-4 py-2.5 hover:bg-base-200/40 transition-colors"
+                :class="cameras.statusOf(cam.id)?.state === 'ONLINE' ? 'border-l-2 border-success' :
+                        cameras.statusOf(cam.id)?.state === 'ERROR'  ? 'border-l-2 border-error' :
+                        cameras.statusOf(cam.id)?.state === 'RECONNECTING' ? 'border-l-2 border-warning' :
+                        'border-l-2 border-transparent'">
 
-              <div v-if="cameras.cameras.length === 0"
-                class="flex justify-center py-8 opacity-30">
-                <p class="text-xs font-mono">NO CAMERAS CONFIGURED</p>
+                <span class="w-2 h-2 rounded-full shrink-0 mt-0.5"
+                  :class="dotColor(cameras.statusOf(cam.id)?.state)"></span>
+
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs font-semibold truncate"
+                    :class="cameras.statusOf(cam.id)?.state === 'INACTIVE' ? 'opacity-40' : ''">
+                    {{ cam.name }}
+                  </p>
+                  <!-- FPS mini bar -->
+                  <div v-if="cameras.statusOf(cam.id)?.fps"
+                    class="flex items-center gap-1.5 mt-0.5">
+                    <progress class="progress progress-xs w-14 opacity-50"
+                      :class="progressClass((cameras.statusOf(cam.id)?.fps ?? 0) / 30 * 100)"
+                      :value="cameras.statusOf(cam.id)?.fps ?? 0" max="30"></progress>
+                    <span class="font-mono text-[10px] opacity-40">
+                      {{ cameras.statusOf(cam.id)?.fps?.toFixed(0) }}fps
+                    </span>
+                  </div>
+                </div>
+
+                <span class="badge badge-xs font-mono shrink-0"
+                  :class="stateBadge(cameras.statusOf(cam.id)?.state)">
+                  {{ cameras.statusOf(cam.id)?.state ?? 'INACTIVE' }}
+                </span>
               </div>
+            </div>
+
+            <!-- Footer link -->
+            <div class="px-4 py-2 border-t border-base-300">
+              <RouterLink to="/events" class="btn btn-xs btn-ghost w-full font-mono opacity-50">
+                VIEW ALERT LOG →
+              </RouterLink>
             </div>
           </div>
         </div>
-      </div>
 
+      </div>
     </div>
   </AppLayout>
 </template>
@@ -184,11 +259,22 @@ async function ack(id: number) {
   finally { acking.value.delete(id) }
 }
 
-// ── Formatting ────────────────────────────────────────────────────────────
+// ── Time ──────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+function relTime(iso: string) {
+  const diff = Date.now() - new Date(iso).getTime()
+  const m = Math.floor(diff / 60000)
+  if (m < 1)  return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  return fmtTime(iso)
+}
+
+// ── Colors ────────────────────────────────────────────────────────────────
 function gaugeColor(pct: number) {
   if (pct >= 90) return 'text-error'
   if (pct >= 70) return 'text-warning'
@@ -202,42 +288,33 @@ function progressClass(pct: number) {
 }
 
 function sevClass(s: string) {
-  return {
-    critical: 'badge-error',
-    high:     'badge-warning',
-    medium:   'badge-info',
-    low:      'badge-ghost',
-  }[s] ?? 'badge-ghost'
+  return { critical: 'badge-error', high: 'badge-warning', medium: 'badge-info', low: 'badge-ghost' }[s] ?? 'badge-ghost'
+}
+
+function rowSevClass(s: string) {
+  return { critical: 'row-critical', high: 'row-high', medium: 'row-medium', low: 'row-low' }[s] ?? ''
 }
 
 function statusClass(s: string) {
   return {
-    NEW:          'badge-error',
-    ACKNOWLEDGED: 'badge-success',
-    SILENCED:     'badge-ghost',
-    ESCALATED:    'badge-warning',
+    NEW: 'badge-error', ACKNOWLEDGED: 'badge-success',
+    SILENCED: 'badge-ghost', ESCALATED: 'badge-warning',
   }[s] ?? 'badge-ghost'
 }
 
 function dotColor(state?: string) {
   return {
-    ONLINE:       'bg-success animate-pulse',
-    RECONNECTING: 'bg-warning animate-pulse',
-    ERROR:        'bg-error',
-    FAILED:       'bg-error',
-    CONNECTING:   'bg-info animate-pulse',
-    INACTIVE:     'bg-base-300',
+    ONLINE: 'bg-success animate-pulse', RECONNECTING: 'bg-warning animate-pulse',
+    ERROR: 'bg-error', FAILED: 'bg-error',
+    CONNECTING: 'bg-info animate-pulse', INACTIVE: 'bg-base-300',
   }[state ?? 'INACTIVE'] ?? 'bg-base-300'
 }
 
 function stateBadge(state?: string) {
   return {
-    ONLINE:       'badge-success',
-    RECONNECTING: 'badge-warning',
-    ERROR:        'badge-error',
-    FAILED:       'badge-error',
-    CONNECTING:   'badge-info',
-    INACTIVE:     'badge-ghost',
+    ONLINE: 'badge-success', RECONNECTING: 'badge-warning',
+    ERROR: 'badge-error', FAILED: 'badge-error',
+    CONNECTING: 'badge-info', INACTIVE: 'badge-ghost',
   }[state ?? 'INACTIVE'] ?? 'badge-ghost'
 }
 </script>
