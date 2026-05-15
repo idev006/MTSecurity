@@ -11,8 +11,8 @@
           </svg>
           <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">EVENTS & ALERTS</h2>
           <span class="badge badge-xs font-mono"
-            :class="events.newCount > 0 ? 'badge-error animate-pulse' : 'badge-ghost'">
-            {{ events.newCount }} NEW
+            :class="newCount > 0 ? 'badge-error animate-pulse' : 'badge-ghost'">
+            {{ newCount }} NEW
           </span>
         </div>
 
@@ -57,14 +57,14 @@
       </div>
 
       <!-- ── Bulk action bar ──────────────────────────────────────────────── -->
-      <div v-if="events.newCount > 0"
+      <div v-if="newCount > 0"
         class="flex items-center gap-3 px-3 py-2 rounded-lg bg-error/10 border border-error/30 backdrop-blur-sm glow-error">
         <svg class="h-4 w-4 shrink-0 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
         </svg>
         <span class="font-mono text-xs flex-1 text-error font-semibold">
-          {{ events.newCount }} UNACKNOWLEDGED ALERT{{ events.newCount !== 1 ? 'S' : '' }}
+          {{ newCount }} UNACKNOWLEDGED ALERT{{ newCount !== 1 ? 'S' : '' }}
         </span>
         <button class="btn btn-xs btn-error btn-outline font-mono" @click="ackAll">ACK ALL</button>
       </div>
@@ -74,15 +74,15 @@
 
         <!-- Card header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
-          <span class="font-mono text-xs opacity-40">{{ events.events.length }} EVENTS</span>
-          <span v-if="events.loading" class="loading loading-spinner loading-xs opacity-30"></span>
+          <span class="font-mono text-xs opacity-40">{{ rows.length }} EVENTS</span>
+          <span v-if="loading" class="loading loading-spinner loading-xs opacity-30"></span>
         </div>
 
-        <div v-if="events.loading && events.events.length === 0" class="flex justify-center py-12">
+        <div v-if="loading && rows.length === 0" class="flex justify-center py-12">
           <span class="loading loading-spinner loading-md opacity-30"></span>
         </div>
 
-        <div v-else-if="events.events.length === 0"
+        <div v-else-if="rows.length === 0"
           class="flex flex-col items-center py-16 gap-2 opacity-25">
           <svg class="h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1"
@@ -102,7 +102,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ev in events.events" :key="ev.id"
+              <tr v-for="ev in rows" :key="ev.id"
                 class="border-b border-base-300/20 last:border-0 transition-colors"
                 :class="[rowClass(ev), 'hover']">
                 <!-- Severity strip -->
@@ -136,7 +136,7 @@
                 <td class="text-right pr-2">
                   <div class="flex gap-1 justify-end">
                     <div v-if="ev.snapshot_url" class="tooltip tooltip-left" data-tip="View snapshot">
-                      <a :href="`${ev.snapshot_url}?token=${auth.token}`"
+                      <a :href="`${ev.snapshot_url}?token=${token}`"
                         target="_blank" class="btn btn-xs btn-square btn-ghost">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -149,7 +149,7 @@
                       <button class="btn btn-xs btn-square"
                         :class="ev.status === 'NEW' ? 'btn-success btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
-                        @click="ev.status === 'NEW' && ack(ev.id)">
+                        @click="ev.status === 'NEW' && ack(ev)">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
                         </svg>
@@ -159,7 +159,7 @@
                       <button class="btn btn-xs btn-square"
                         :class="(ev.status === 'NEW' || ev.status === 'ESCALATED') ? 'btn-warning btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || (ev.status !== 'NEW' && ev.status !== 'ESCALATED')"
-                        @click="(ev.status === 'NEW' || ev.status === 'ESCALATED') && silence(ev.id)">
+                        @click="(ev.status === 'NEW' || ev.status === 'ESCALATED') && silence(ev)">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
@@ -171,7 +171,7 @@
                       <button class="btn btn-xs btn-square"
                         :class="ev.status === 'NEW' ? 'btn-error btn-outline' : 'btn-ghost opacity-20'"
                         :disabled="busy.has(ev.id) || ev.status !== 'NEW'"
-                        @click="ev.status === 'NEW' && escalate(ev.id)">
+                        @click="ev.status === 'NEW' && escalate(ev)">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
                         </svg>
@@ -188,9 +188,9 @@
         <div class="flex items-center justify-between px-4 py-2 border-t border-base-300 flex-wrap gap-2">
           <!-- Page size selector -->
           <div class="flex items-center gap-2">
-            <span class="font-mono text-xs opacity-40">ROWS PER PAGE</span>
+            <span class="font-mono text-xs opacity-40">ROWS</span>
             <div class="join">
-              <button v-for="s in PAGE_SIZE_OPTIONS" :key="s"
+              <button v-for="s in PAGE_SIZES" :key="s"
                 class="join-item btn btn-xs font-mono"
                 :class="pageSize === s ? 'btn-neutral' : 'btn-ghost'"
                 @click="onPageSizeClick(s)">
@@ -216,24 +216,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
+import { eventsApi, type EventRead } from '@/api/client'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 
-const events = useEventsStore()
-const auth   = useAuthStore()
+const eventsStore = useEventsStore()
+const auth = useAuthStore()
+const token = computed(() => auth.token)
 
-// ── Pagination ────────────────────────────────────────────────────────────
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+// ── Local state — NOT shared store, avoids race with AppLayout.fetchRecent() ──
+const rows    = ref<EventRead[]>([])
+const loading = ref(false)
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+const PAGE_SIZES  = [10, 25, 50, 100]
 const page        = ref(1)
 const pageSize    = ref(25)
 const hasNextPage = ref(true)
 
-// ── Filters (all server-side — backend supports all these params) ─────────
+// ── Filters (all server-side) ─────────────────────────────────────────────────
 const severity = ref('')
 const status   = ref('')
 const behavior = ref('')
+
+// New count from local rows (not shared store)
+const newCount = computed(() => rows.value.filter(e => e.status === 'NEW').length)
 
 onMounted(() => load())
 
@@ -243,53 +252,71 @@ function resetAndLoad() {
 }
 
 function onPageSizeClick(s: number) {
+  if (pageSize.value === s) return
   pageSize.value = s
   page.value = 1
   load()
 }
 
-function prevPage() {
-  if (page.value > 1) { page.value--; load() }
-}
-
-function nextPage() {
-  if (hasNextPage.value) { page.value++; load() }
-}
+function prevPage() { if (page.value > 1) { page.value--; load() } }
+function nextPage()  { if (hasNextPage.value) { page.value++; load() } }
 
 async function load() {
-  const params: Record<string, string | number> = {
-    page:      page.value,
-    page_size: pageSize.value,
+  loading.value = true
+  try {
+    const params: Record<string, string | number> = {
+      page:      page.value,
+      page_size: pageSize.value,
+    }
+    if (severity.value) params.severity = severity.value
+    if (status.value)   params.status   = status.value
+    if (behavior.value) params.behavior  = behavior.value
+
+    rows.value = await eventsApi.list(params)
+    hasNextPage.value = rows.value.length >= pageSize.value
+  } catch {
+    // keep existing rows on error
+  } finally {
+    loading.value = false
   }
-  if (severity.value) params.severity = severity.value
-  if (status.value)   params.status   = status.value
-  if (behavior.value) params.behavior  = behavior.value
-  await events.fetchRecent(params)
-  hasNextPage.value = events.events.length >= pageSize.value
 }
 
-// ── Actions ───────────────────────────────────────────────────────────────
+// ── Actions — mutate local rows immediately, also sync store for bell count ───
 const busy = ref<Set<number>>(new Set())
 
-async function ack(id: number) {
-  busy.value.add(id)
-  try { await events.acknowledge(id) } finally { busy.value.delete(id) }
-}
-async function silence(id: number) {
-  busy.value.add(id)
-  try { await events.silence(id, 300) } finally { busy.value.delete(id) }
-}
-async function escalate(id: number) {
-  busy.value.add(id)
-  try { await events.escalate(id, 'Escalated from console') } finally { busy.value.delete(id) }
-}
-async function ackAll() {
-  await Promise.allSettled(
-    events.events.filter(e => e.status === 'NEW').map(e => events.acknowledge(e.id))
-  )
+async function ack(ev: EventRead) {
+  busy.value.add(ev.id)
+  try {
+    await eventsApi.acknowledge(ev.id)
+    ev.status = 'ACKNOWLEDGED'
+    eventsStore.acknowledge(ev.id)  // keep store count in sync
+  } finally { busy.value.delete(ev.id) }
 }
 
-// ── Time ──────────────────────────────────────────────────────────────────
+async function silence(ev: EventRead) {
+  busy.value.add(ev.id)
+  try {
+    await eventsApi.silence(ev.id, 300)
+    ev.status = 'SILENCED'
+    eventsStore.silence(ev.id, 300)
+  } finally { busy.value.delete(ev.id) }
+}
+
+async function escalate(ev: EventRead) {
+  busy.value.add(ev.id)
+  try {
+    await eventsApi.escalate(ev.id, 'Escalated from console')
+    ev.status = 'ESCALATED'
+    eventsStore.escalate(ev.id, 'Escalated from console')
+  } finally { busy.value.delete(ev.id) }
+}
+
+async function ackAll() {
+  const targets = rows.value.filter(e => e.status === 'NEW')
+  await Promise.allSettled(targets.map(e => ack(e)))
+}
+
+// ── Time ──────────────────────────────────────────────────────────────────────
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleString([], {
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
@@ -305,8 +332,8 @@ function relTime(iso: string) {
   return fmtTime(iso)
 }
 
-// ── Colors ────────────────────────────────────────────────────────────────
-function rowClass(ev: any) {
+// ── Colors ────────────────────────────────────────────────────────────────────
+function rowClass(ev: EventRead) {
   return ev.status === 'SILENCED' ? 'opacity-40' : ''
 }
 function sevStripClass(s: string) {
