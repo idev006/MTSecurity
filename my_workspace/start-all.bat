@@ -33,7 +33,7 @@ if errorlevel 1 (
 
 :: Start backend in a new window
 echo [1/2] Starting Backend   ^(http://localhost:8000^)
-start "MTSecurity Backend" cmd /k "cd /d "%ROOT%backend" && "%VENV%\Scripts\python" main.py"
+start "MTSecurity Backend" cmd /k "cd /d "%ROOT%backend" && "%VENV%\Scripts\python" main.py --reload"
 
 :: Brief pause so backend gets a head start
 timeout /t 3 /nobreak >nul

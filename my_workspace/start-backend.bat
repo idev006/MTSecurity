@@ -21,6 +21,7 @@ echo [MTSecurity] Starting backend on http://localhost:8000 ...
 echo.
 echo   Default login: admin / Admin1234
 echo   Change password: python scripts\create_admin.py
+echo   Auto-reload   : enabled (saves trigger restart)
 echo.
-"%VENV%\Scripts\python" main.py
+"%VENV%\Scripts\python" main.py --reload
 pause
