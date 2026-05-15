@@ -417,11 +417,51 @@ await store.fetchData()  // ← correct
 
 ---
 
+## REFACTOR-001 — Backend --reload support (2026-05-15)
+
+**Problem:** `python main.py` had no `--reload` flag → every code change required manual process kill + restart.
+
+**Root cause:** Service init (CameraManager, AIPipeline, etc.) happened in `bootstrap()` BEFORE passing app to uvicorn. `uvicorn --reload` requires importing the app from a **string path** (`"api.app:app"`), which means uvicorn controls the process. Passing an already-instantiated `app` object blocks this.
+
+**Solution:** Move all service init into FastAPI `lifespan` context manager:
+```python
+# api/app.py
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # startup: init MessageBus, DB, CameraManager, AI, RuleEngine...
+    yield
+    # shutdown: stop all services
+
+app = create_app()  # module-level — required for string import
+```
+
+```python
+# main.py
+uvicorn.run(
+    "api.app:app",   # string import → uvicorn can reload
+    reload=args.reload,
+    reload_dirs=[...],
+)
+```
+
+**Usage:**
+```bash
+python main.py           # production
+python main.py --reload  # dev — auto-reloads on any .py change
+```
+
+**Commit:** `534f8f6`
+
+**Prevention:** Any FastAPI project that needs `--reload` must:
+1. Use string import (`"module:app"`) not object reference
+2. Put ALL startup work in `lifespan`, not before `uvicorn.run()`
+
+---
+
 ## TODO — Known technical debt
 
 | Item | Location | Priority | Notes |
 |------|----------|----------|-------|
-| Add `--reload` to dev startup | backend/main.py or launch config | Medium | Current: `python main.py` (no reload) |
 | Check other list endpoints for `Depends()` bug | `rules.py`, `users.py` GET list | High | Same pattern as BUG-001 may exist |
 | Add total count to EventFilter response | backend events.py | Low | Currently frontend guesses hasNextPage by row count |
 | LPR integration in AI pipeline | `ai/lpr/` | Low | Currently wired but not active |
