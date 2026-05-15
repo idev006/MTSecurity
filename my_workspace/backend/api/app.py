@@ -1,9 +1,10 @@
-"""FastAPI application factory."""
+"""FastAPI application factory — all services initialised in lifespan."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,88 +12,197 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine
-
-    from config import Settings
-    from protocol.message_bus import MessageBus
-    from ssot.config_service import ConfigService
-    from ssot.state_registry import StateRegistry
+logger = logging.getLogger("mtsecurity.app")
 
 _PREFIX = "/api/v1"
 
 
-def create_app(
-    cfg: "Settings",
-    config_svc: "ConfigService",
-    state_reg: "StateRegistry",
-    bus: "MessageBus",
-    engine: "AsyncEngine | None" = None,
-) -> FastAPI:
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    """Start every service on startup; tear down gracefully on shutdown."""
+    from config import get_settings
+    from db.init_db import create_tables
+    from db.pragmas import apply_pragmas
+    from db.session import get_session_factory, init_engine
+    from ingestion.camera_manager import CameraManager
+    from ingestion.frame_buffer import FrameBuffer
+    from ingestion.webcam_watcher import WebcamWatcher
+    from alerts.alert_manager import AlertManager
+    from alerts.notifications.dispatcher import NotificationDispatcher
+    from rules.rule_engine import RuleEngine
+    from protocol.message_bus import MessageBus
+    from ssot.config_service import ConfigService
+    from ssot.state_registry import StateRegistry
+    from ai.model_registry import ModelRegistry
+    from ai.inference_engine import InferenceEngine
+    from ai.pipeline import AIPipeline
+    from api.websocket.hub import WebSocketHub
+
+    cfg = get_settings()
+    cfg.ensure_dirs()
+    logger.info("MTSecurity v%s starting — env=%s", cfg.app_version, cfg.environment)
+
+    state_reg = StateRegistry()
+    state_reg.set_boot_state("INITIALIZING")
+
+    # ── 1. Protocol Layer ────────────────────────────────────────────────────
+    state_reg.set_boot_state("STARTING_SERVICES")
+    bus = MessageBus()
+    await bus.start()
+    logger.info("MessageBus started")
+
+    # ── 2. Database ──────────────────────────────────────────────────────────
+    engine = init_engine(cfg.database_url)
+    apply_pragmas(engine)
+    await create_tables(engine)
+
+    # ── 3. SSOT Layer ────────────────────────────────────────────────────────
+    config_svc = ConfigService(get_session_factory, bus)
+    await config_svc.initialize()
+
+    # ── 4. Ingestion Layer ───────────────────────────────────────────────────
+    frame_buffer = FrameBuffer()
+    cam_manager = CameraManager(
+        buffer=frame_buffer,
+        config_svc=config_svc,
+        state_reg=state_reg,
+        bus=bus,
+        encryption_key=cfg.encryption_key.get_secret_value().encode(),
+    )
+    await cam_manager.start_all()
+    logger.info("CameraManager started — %d camera(s) active", cam_manager.active_count)
+
+    # ── 5. Webcam Hotplug Watcher ────────────────────────────────────────────
+    loop = asyncio.get_running_loop()
+    webcam_watcher = WebcamWatcher(
+        cam_manager=cam_manager,
+        config_svc=config_svc,
+        state_reg=state_reg,
+        loop=loop,
+        interval=15,
+    )
+    webcam_watcher.start()
+
+    # ── 6. AI Pipeline ───────────────────────────────────────────────────────
+    model_reg = ModelRegistry(device=cfg.model_device)
+    inference_engine = InferenceEngine(model_reg, "yolov11n", cfg.model_path)
+    ai_pipeline = AIPipeline(
+        buffer=frame_buffer,
+        engine=inference_engine,
+        bus=bus,
+        confidence_threshold=cfg.ai_confidence_threshold,
+    )
+    ai_pipeline.start(loop)
+
+    # ── 7. Rules + Alerts Pipeline ───────────────────────────────────────────
+    dispatcher = NotificationDispatcher()
+    alert_manager = AlertManager(
+        dispatcher=dispatcher,
+        config_svc=config_svc,
+        bus=bus,
+        base_url=cfg.base_url,
+        session_factory=get_session_factory(),
+        frame_buffer=frame_buffer,
+        snapshot_dir=cfg.snapshot_dir,
+    )
+    alert_manager.register(bus)
+
+    rule_engine = RuleEngine(config_svc=config_svc, bus=bus)
+    await rule_engine.initialize()
+    rule_engine.register(bus)
+    logger.info("RuleEngine + AlertManager started")
+
+    # ── 8. WebSocket hub ─────────────────────────────────────────────────────
+    hub = WebSocketHub()
+    hub.register(bus)
+
+    # ── Attach everything to app.state ───────────────────────────────────────
+    app.state.cfg = cfg
+    app.state.config_svc = config_svc
+    app.state.state_reg = state_reg
+    app.state.bus = bus
+    app.state.ws_hub = hub
+    app.state.cam_manager = cam_manager
+    app.state.frame_buffer = frame_buffer
+    app.state.rule_engine = rule_engine
+    app.state.alert_manager = alert_manager
+
+    state_reg.set_boot_state("RUNNING")
+    logger.info("All services up — ready to serve requests")
+
+    # ── Application is running ───────────────────────────────────────────────
+    yield
+
+    # ── Graceful shutdown ────────────────────────────────────────────────────
+    logger.info("Shutting down…")
+    state_reg.set_boot_state("STOPPING")
+    webcam_watcher.stop()
+    ai_pipeline.stop()
+    await cam_manager.stop_all()
+    await bus.stop()
+    await engine.dispose()
+    logger.info("Shutdown complete")
+
+
+def create_app() -> FastAPI:
+    """Create the FastAPI application.
+
+    All heavy service initialisation happens inside the lifespan context so
+    that ``uvicorn --reload`` can safely re-import this module without
+    re-starting background services prematurely.
+    """
+    from config import get_settings
     from api.middleware.audit import AuditMiddleware
     from api.routers import auth, cameras, events, health, lpr, rules, users, zones
     from api.routers.simulate import router as simulate_router
-    from api.websocket.hub import WebSocketHub
     from api.websocket.router import router as ws_router
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        state_reg.set_boot_state("RUNNING")
-        yield
-        state_reg.set_boot_state("STOPPING")
+    cfg = get_settings()
 
-    app = FastAPI(
+    application = FastAPI(
         title=cfg.app_name,
         version=cfg.app_version,
-        lifespan=lifespan,
+        lifespan=_lifespan,
         docs_url="/api/docs" if cfg.debug else None,
         redoc_url="/api/redoc" if cfg.debug else None,
         openapi_url="/api/openapi.json" if cfg.debug else None,
     )
 
     # ── Rate limiter ──────────────────────────────────────────────────────────
-    limiter = Limiter(key_func=get_remote_address, default_limits=[cfg.rate_limit_api])
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[cfg.rate_limit_api],
+    )
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # ── CORS ──────────────────────────────────────────────────────────────────
-    # In debug mode, add common Vite dev-server origins automatically.
-    # In production, set CORS_ORIGINS="https://yourdomain.com" in .env.
     origins: list[str] = [o.strip() for o in cfg.cors_origins.split(",") if o.strip()]
     if cfg.debug:
         origins = list({*origins, "http://localhost:5173", "http://localhost:4173"})
-    app.add_middleware(
+    application.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
-    # ── Audit middleware ──────────────────────────────────────────────────────
-    app.add_middleware(AuditMiddleware)
-
-    # ── Shared state ──────────────────────────────────────────────────────────
-    app.state.config_svc = config_svc
-    app.state.state_reg = state_reg
-    app.state.bus = bus
-    app.state.cfg = cfg
-
-    # ── WebSocket hub ─────────────────────────────────────────────────────────
-    hub = WebSocketHub()
-    hub.register(bus)
-    app.state.ws_hub = hub
+    application.add_middleware(AuditMiddleware)
 
     # ── Routers ───────────────────────────────────────────────────────────────
-    app.include_router(health.router,    prefix=_PREFIX)
-    app.include_router(auth.router,      prefix=_PREFIX)
-    app.include_router(cameras.router,   prefix=_PREFIX)
-    app.include_router(zones.router,     prefix=_PREFIX)
-    app.include_router(rules.router,     prefix=_PREFIX)
-    app.include_router(events.router,    prefix=_PREFIX)
-    app.include_router(lpr.router,       prefix=_PREFIX)
-    app.include_router(users.router,     prefix=_PREFIX)
-    app.include_router(simulate_router,  prefix=_PREFIX)
-    app.include_router(ws_router,        prefix=_PREFIX)
+    application.include_router(health.router,    prefix=_PREFIX)
+    application.include_router(auth.router,      prefix=_PREFIX)
+    application.include_router(cameras.router,   prefix=_PREFIX)
+    application.include_router(zones.router,     prefix=_PREFIX)
+    application.include_router(rules.router,     prefix=_PREFIX)
+    application.include_router(events.router,    prefix=_PREFIX)
+    application.include_router(lpr.router,       prefix=_PREFIX)
+    application.include_router(users.router,     prefix=_PREFIX)
+    application.include_router(simulate_router,  prefix=_PREFIX)
+    application.include_router(ws_router,        prefix=_PREFIX)
 
-    return app
+    return application
+
+
+# Module-level app instance — required for ``uvicorn "api.app:app" --reload``
+app = create_app()
