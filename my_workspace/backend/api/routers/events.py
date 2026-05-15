@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 
@@ -41,9 +41,7 @@ def _to_read(event: Event, base_url: str) -> dict:
 # ── List / filter ─────────────────────────────────────────────────────────────
 
 @router.get("", response_model=list[EventRead], dependencies=[require("events:read")])
-async def list_events(request: Request, db: DBDep, user: CurrentUser, f: EventFilter = None) -> list[dict]:
-    if f is None:
-        f = EventFilter()
+async def list_events(request: Request, db: DBDep, user: CurrentUser, f: EventFilter = Depends()) -> list[dict]:
     base_url: str = request.app.state.cfg.base_url
 
     query = select(Event).order_by(Event.occurred_at.desc())
