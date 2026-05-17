@@ -311,19 +311,52 @@
     <!-- ── Delete single event confirm ─────────────────────────────────────── -->
     <dialog ref="deleteModal" class="modal">
       <div class="modal-box max-w-sm">
-        <h3 class="font-mono text-sm font-bold text-error mb-1">DELETE EVENT</h3>
-        <p class="text-xs opacity-60 mb-4">
-          Event <span class="font-mono font-bold">#{{ deleteTarget?.id }}</span>
-          and its snapshot/clip files will be permanently removed.
-          This cannot be undone.
+        <!-- Header -->
+        <div class="flex items-center gap-2 mb-3">
+          <svg class="h-4 w-4 text-error shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <h3 class="font-mono text-sm font-bold text-error">CONFIRM DELETE</h3>
+        </div>
+
+        <!-- Event detail -->
+        <div class="rounded bg-base-200 border border-base-300 px-3 py-2.5 mb-3 flex flex-col gap-1 text-xs font-mono">
+          <div class="flex items-center gap-2">
+            <span class="opacity-40">EVENT</span>
+            <span class="font-bold">#{{ deleteTarget?.id }}</span>
+            <span class="badge badge-xs" :class="sevClass(deleteTarget?.severity ?? '')">
+              {{ (deleteTarget?.severity ?? '').toUpperCase() }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2 opacity-70">
+            <span class="opacity-40">TYPE</span>
+            <span class="capitalize">{{ deleteTarget?.behavior.replace(/_/g, ' ') }}</span>
+          </div>
+          <div class="flex items-center gap-2 opacity-70">
+            <span class="opacity-40">CAM</span>
+            <span>{{ deleteTarget?.camera_id ?? '—' }}</span>
+            <span class="opacity-40 ml-1">{{ deleteTarget ? relTime(deleteTarget.occurred_at) : '' }}</span>
+          </div>
+          <div class="flex items-center gap-2 mt-0.5 pt-1.5 border-t border-base-300">
+            <span class="opacity-40">FILES</span>
+            <span v-if="deleteTarget?.snapshot_url" class="badge badge-xs badge-ghost">📷 snapshot</span>
+            <span v-if="deleteTarget?.clip_url"     class="badge badge-xs badge-ghost">🎬 clip</span>
+            <span v-if="!deleteTarget?.snapshot_url && !deleteTarget?.clip_url" class="opacity-30">none</span>
+          </div>
+        </div>
+
+        <p class="text-xs text-error/70 mb-3">
+          ⚠ This event and all associated files will be <strong>permanently removed</strong>. This action cannot be undone.
         </p>
+
         <div class="modal-action gap-2">
-          <form method="dialog"><button class="btn btn-xs btn-ghost font-mono">CANCEL</button></form>
-          <button class="btn btn-xs btn-error font-mono"
+          <form method="dialog"><button class="btn btn-sm btn-ghost font-mono">CANCEL</button></form>
+          <button class="btn btn-sm btn-error font-mono"
             :disabled="deleteWorking"
             @click="doDeleteOne">
             <span v-if="deleteWorking" class="loading loading-spinner loading-xs"></span>
-            DELETE
+            YES, DELETE
           </button>
         </div>
       </div>
@@ -585,12 +618,17 @@ function confirmDeleteOne(ev: EventRead) {
 async function doDeleteOne() {
   if (!deleteTarget.value) return
   deleteWorking.value = true
+  const ev = deleteTarget.value
   try {
-    await eventsApi.deleteEvent(deleteTarget.value.id)
-    rows.value = rows.value.filter(r => r.id !== deleteTarget.value!.id)
+    await eventsApi.deleteEvent(ev.id)
+    rows.value = rows.value.filter(r => r.id !== ev.id)
     total.value = Math.max(0, total.value - 1)
-    eventsStore.remove(deleteTarget.value.id)
+    eventsStore.remove(ev.id)
     deleteModal.value?.close()
+    toast.success(
+      'Event Deleted',
+      `#${ev.id} · ${ev.behavior.replace(/_/g, ' ')} (cam ${ev.camera_id ?? '?'}) removed permanently`,
+    )
   } catch (e: any) {
     toast.error('Delete Failed', e?.message ?? 'Could not delete event')
   } finally {
@@ -666,7 +704,12 @@ async function doPurge() {
     resetPurge()
     await load()
     eventsStore.fetch()
-    toast.success('Purged', `${res.deleted} event(s) deleted successfully`)
+    const scope = purge.days === 0 ? 'all time' : `older than ${purge.days} days`
+    const statLabel = purge.statuses.length ? purge.statuses.join(', ') : 'all statuses'
+    toast.success(
+      `${res.deleted} Event${res.deleted !== 1 ? 's' : ''} Purged`,
+      `Removed ${scope} · ${statLabel}`,
+    )
   } catch (e: any) {
     purge.error = e?.message ?? 'Purge failed'
   } finally {
