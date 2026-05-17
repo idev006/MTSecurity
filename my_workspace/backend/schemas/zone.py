@@ -62,20 +62,25 @@ class LogicNode(BaseModel):
     operator: Literal["AND", "OR", "NOT"]
     conditions: List[Union[LogicNode, LogicLeaf]]
 
+_BEHAVIOR_PATTERN = r"^(intrusion|loitering|line_crossing|crowd_density|abandoned_object|running|fall_detection|crouching|repeated_entry|pacing|sudden_gathering)$"
+
+
 class RuleCreate(BaseModel):
     zone_id: int
     name: str = Field(..., min_length=1, max_length=128)
-    behavior: str = Field(..., pattern=r"^(intrusion|loitering|line_crossing|crowd_density|abandoned_object)$")
+    behavior: str = Field(..., pattern=_BEHAVIOR_PATTERN)
     confidence_threshold: float = Field(0.6, ge=0.1, le=1.0)
     dwell_threshold_seconds: int = Field(30, ge=1, le=3600)
     cooldown_seconds: int = Field(60, ge=10, le=3600)
     severity: str = Field("medium", pattern=r"^(low|medium|high|critical)$")
     schedule: dict | None = None
     logic: LogicNode | LogicLeaf | None = None
+    behavior_params: dict | None = None
 
 
 class RuleUpdate(BaseModel):
     name: str | None = None
+    behavior: str | None = Field(None, pattern=_BEHAVIOR_PATTERN)
     is_active: bool | None = None
     confidence_threshold: float | None = Field(None, ge=0.1, le=1.0)
     dwell_threshold_seconds: int | None = Field(None, ge=1, le=3600)
@@ -83,6 +88,7 @@ class RuleUpdate(BaseModel):
     severity: str | None = Field(None, pattern=r"^(low|medium|high|critical)$")
     schedule: dict | None = None
     logic: LogicNode | LogicLeaf | None = None
+    behavior_params: dict | None = None
 
 
 class RuleRead(BaseModel):
@@ -97,11 +103,22 @@ class RuleRead(BaseModel):
     severity: str
     schedule: dict | None = None
     logic: LogicNode | LogicLeaf | None = None
+    behavior_params: dict | None = None
     created_at: datetime
 
     @field_validator("schedule", "logic", mode="before")
     @classmethod
     def parse_json_fields(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        return v
+
+    @field_validator("behavior_params", mode="before")
+    @classmethod
+    def parse_behavior_params(cls, v):
         if isinstance(v, str):
             try:
                 return json.loads(v)

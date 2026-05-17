@@ -28,8 +28,8 @@ _RTSP_BACKOFF = [5, 10, 20, 40, 60, 60, 60]
 _WEBCAM_BACKOFF = [2, 2, 5, 5, 10, 10, 10]
 _MAX_RETRIES = 10
 
-# Default backend for webcam (let OpenCV decide, DSHOW often fails by index)
-_WEBCAM_BACKEND = cv2.CAP_ANY
+# DSHOW is faster on Windows — CAP_ANY tries multiple backends sequentially
+_WEBCAM_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
 
 
 class CameraThread(threading.Thread):
@@ -67,6 +67,9 @@ class CameraThread(threading.Thread):
         self._device_index = device_index
         self._frame_interval = 1.0 / max(target_fps, 1.0)
         self._stop_event = threading.Event()
+        # Rolling FPS — exponential moving average over actual frame intervals
+        self._fps_ema: float = 0.0
+        self._fps_last_time: float = 0.0
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -156,9 +159,23 @@ class CameraThread(threading.Thread):
             f = Frame(camera_id=self.camera_id, data=jpeg, width=w, height=h)
             self._buffer.put(f)
 
+            # Compute rolling FPS via exponential moving average
+            now = time.monotonic()
+            if self._fps_last_time > 0:
+                interval = now - self._fps_last_time
+                instant_fps = 1.0 / interval if interval > 0 else 0.0
+                # EMA alpha=0.2 → smooth over ~5 frames
+                self._fps_ema = 0.2 * instant_fps + 0.8 * self._fps_ema
+            self._fps_last_time = now
+
             msg = MTPMessage(
                 msg_type=MTPMsgType.FRAME_READY,
-                payload={"camera_id": self.camera_id, "width": w, "height": h},
+                payload={
+                    "camera_id": self.camera_id,
+                    "width": w,
+                    "height": h,
+                    "fps": round(self._fps_ema, 1),
+                },
                 priority=MTPPriority.NORMAL,
                 source=f"cam-{self.camera_id}",
                 ttl_seconds=1.0,
@@ -176,6 +193,13 @@ class CameraThread(threading.Thread):
             "Camera %d connection failed (attempt %d/%d) — retry in %ds [%s]",
             self.camera_id, attempt + 1, _MAX_RETRIES, wait, self._source_label(),
         )
+        err = f"Attempt {attempt + 1}/{_MAX_RETRIES} — retry in {wait}s"
+        self._state.update_camera_meta(
+            self.camera_id,
+            error_msg=err,
+            reconnect_attempts=attempt + 1,
+        )
+        self._publish_status("connecting", error_msg=err)
         msg = MTPMessage(
             msg_type=MTPMsgType.CAMERA_RECONNECT,
             payload=CameraReconnectPayload(

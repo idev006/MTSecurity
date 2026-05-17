@@ -38,7 +38,9 @@ class Track:
 
 
 _IOU_THRESHOLD = 0.35   # minimum overlap to match detection to track
-_MAX_AGE = 5            # frames a track survives without a match
+_MAX_AGE = 20           # frames a track survives without a match
+                        # 20 frames ≈ 2s at 10 fps — gives stationary objects time
+                        # to survive brief detection gaps (flickering confidence)
 
 
 class ObjectTracker:

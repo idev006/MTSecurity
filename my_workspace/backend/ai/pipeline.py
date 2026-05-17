@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import threading
 import time
@@ -55,15 +54,17 @@ class AIPipeline:
         self._engine = engine
         self._bus = bus
         self._confidence = confidence_threshold
-        self._target_classes = target_classes or [0]   # 0 = person
+        self._target_classes = target_classes  # None = all COCO classes
         self._trackers: dict[int, ObjectTracker] = {}
+        self._trackers_lock = threading.Lock()
+        self._processing: set[int] = set()   # cameras with in-flight inference
         self._session_reg = SessionRegistry()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._loop: asyncio.AbstractEventLoop | None = None
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
-        self._loop = loop
+        # loop parameter kept for API compatibility but no longer used directly —
+        # publish_nowait() captures it from the bus at bus.start() time.
         self._thread = threading.Thread(target=self._run, name="ai-pipeline", daemon=True)
         self._thread.start()
         logger.info("AIPipeline started (WIP=%d, classes=%s)", _WIP_LIMIT, self._target_classes)
@@ -96,10 +97,18 @@ class AIPipeline:
                 if not semaphore.acquire(timeout=0.1):
                     continue
 
+                with self._trackers_lock:
+                    if camera_id in self._processing:
+                        semaphore.release()
+                        continue
+                    self._processing.add(camera_id)
+
                 def process(cam_id=camera_id, f=frame, sem=semaphore):
                     try:
                         self._process_frame(cam_id, f)
                     finally:
+                        with self._trackers_lock:
+                            self._processing.discard(cam_id)
                         sem.release()
 
                 t = threading.Thread(target=process, daemon=True)
@@ -131,9 +140,11 @@ class AIPipeline:
             ) if outputs else []
 
             # Track
-            if camera_id not in self._trackers:
-                self._trackers[camera_id] = ObjectTracker()
-            tracks = self._trackers[camera_id].update(detections)
+            with self._trackers_lock:
+                if camera_id not in self._trackers:
+                    self._trackers[camera_id] = ObjectTracker()
+                tracker = self._trackers[camera_id]
+            tracks = tracker.update(detections)
 
             # Update session registry
             active_ids = {t.track_id for t in tracks}
@@ -173,8 +184,10 @@ class AIPipeline:
             source="ai-pipeline",
         )
 
-        if self._loop and not self._loop.is_closed():
-            asyncio.run_coroutine_threadsafe(self._bus.publish(msg), self._loop)
+        # publish_nowait is thread-safe (routes through call_soon_threadsafe internally)
+        # Prefer it over run_coroutine_threadsafe so we never block the thread pool
+        # and never leave dangling futures that pile up if the queue backs up.
+        self._bus.publish_nowait(msg)
 
     @property
     def session_registry(self) -> SessionRegistry:

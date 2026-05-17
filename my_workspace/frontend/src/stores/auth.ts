@@ -25,7 +25,9 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = null
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
-    // Clear camera store so MJPEG <img> src tags are removed immediately
+    // Tear down WebSocket and camera store
+    const { useSystemStore } = await import('@/stores/system')
+    useSystemStore().destroy()
     const { useCamerasStore } = await import('@/stores/cameras')
     useCamerasStore().reset()
   }

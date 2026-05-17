@@ -54,7 +54,9 @@ function updateTime(field: 'start' | 'end', val: string) {
   <div class="p-4 bg-base-300/20 rounded-xl border border-base-300 space-y-4">
     <div class="flex items-center justify-between">
       <span class="text-xs font-black uppercase tracking-widest opacity-60">Primary Schedule</span>
-      <div class="badge badge-outline badge-xs opacity-50">Active Control</div>
+      <div class="tooltip tooltip-left" data-tip="Rule fires only within this time window and on selected days">
+        <span class="badge badge-outline badge-xs opacity-50 cursor-help">Active Control</span>
+      </div>
     </div>
 
     <!-- Time Range Selection -->
@@ -89,16 +91,16 @@ function updateTime(field: 'start' | 'end', val: string) {
         <span class="label-text text-[10px] uppercase font-bold opacity-70">Operating Days</span>
       </label>
       <div class="flex justify-between gap-1">
-        <button 
-          v-for="day in daysOfWeek" 
+        <button
+          v-for="day in daysOfWeek"
           :key="day.value"
           type="button"
           @click="toggleDay(day.value)"
           :class="[
-            'btn btn-circle btn-xs h-8 w-8 transition-all duration-300',
-            schedule.days.includes(day.value) 
-              ? 'btn-primary shadow-lg shadow-primary/20' 
-              : 'btn-ghost bg-base-200 opacity-50'
+            'btn btn-circle btn-xs w-7 h-7 text-[11px] font-bold transition-all duration-200',
+            schedule.days.includes(day.value)
+              ? 'btn-primary shadow-sm shadow-primary/20'
+              : 'btn-ghost bg-base-200 opacity-40 hover:opacity-70'
           ]"
         >
           {{ day.label }}

@@ -4,14 +4,6 @@
 
       <!-- ── Toolbar ──────────────────────────────────────────────────── -->
       <div class="flex items-center gap-2 flex-wrap">
-        <div class="flex items-center gap-2">
-          <svg class="h-3.5 w-3.5 text-primary opacity-70" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-          </svg>
-          <h2 class="font-mono text-xs font-bold tracking-widest opacity-60">CAMERA GRID</h2>
-        </div>
-
         <div class="ml-auto flex items-center gap-1.5 flex-wrap">
           <!-- Layout toggle -->
           <div class="join">
@@ -38,8 +30,10 @@
           <select class="select select-xs select-bordered font-mono" v-model="filterState">
             <option value="">ALL STATES</option>
             <option value="ONLINE">ONLINE</option>
+            <option value="CONNECTING">CONNECTING</option>
             <option value="RECONNECTING">RECONNECTING</option>
             <option value="ERROR">ERROR</option>
+            <option value="FAILED">FAILED</option>
             <option value="INACTIVE">INACTIVE</option>
           </select>
 
@@ -102,9 +96,9 @@
 
       <!-- ── Grid layout ───────────────────────────────────────────────── -->
       <div v-else-if="layout === 'grid'"
-        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <div v-for="cam in filtered" :key="cam.id"
-          class="rounded-lg border bg-base-100 overflow-hidden cursor-pointer transition-all hover:shadow-md"
+          class="group rounded-lg border bg-base-100 overflow-hidden cursor-pointer transition-all hover:shadow-md"
           :class="cardBorder(cameras.statusOf(cam.id)?.state)"
           @click="selectCam(cam.id)">
 
@@ -186,6 +180,29 @@
               {{ cameras.statusOf(cam.id)?.fps?.toFixed(0) }}fps
             </div>
 
+            <!-- Edit / Delete actions — reveal on card hover -->
+            <div class="absolute top-1.5 right-1.5 flex gap-1 z-20"
+                 @click.stop>
+              <div class="tooltip tooltip-left" data-tip="Edit camera">
+                <button class="btn btn-xs btn-square bg-base-100/80 hover:btn-primary border-0"
+                  @click="openEditCam(cam)">
+                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="tooltip tooltip-left" data-tip="Delete camera">
+                <button class="btn btn-xs btn-square bg-base-100/80 hover:btn-error border-0"
+                  @click="openDeleteCam(cam)">
+                  <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+
             <!-- Security Status Widget -->
             <div v-if="cameras.statusOf(cam.id)?.state === 'ONLINE' && zonesByCamera(cam.id).length > 0"
                  class="absolute bottom-1.5 left-1.5 flex items-center gap-1.5 px-2 py-0.5 rounded backdrop-blur-md border shadow-lg transition-colors z-10"
@@ -197,7 +214,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
               </svg>
               <span class="text-[10px] font-mono font-bold tracking-wider">
-                {{ hasRecentAlert(cam.id) ? 'ALERT: INTRUSION' : `SECURE (${zonesByCamera(cam.id).length} ZONE)` }}
+                {{ recentAlertFor(cam.id) ? `ALERT: ${recentAlertFor(cam.id)!.behavior.replace(/_/g, ' ').toUpperCase()}` : `SECURE (${zonesByCamera(cam.id).length} ZONE)` }}
               </span>
             </div>
           </div>
@@ -300,6 +317,24 @@
                       </svg>
                     </a>
                   </div>
+                  <!-- Edit -->
+                  <div class="tooltip tooltip-left" data-tip="Edit camera">
+                    <button class="btn btn-xs btn-square btn-ghost" @click="openEditCam(cam)">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <!-- Delete -->
+                  <div class="tooltip tooltip-left" data-tip="Delete camera">
+                    <button class="btn btn-xs btn-square btn-ghost text-error hover:btn-error" @click="openDeleteCam(cam)">
+                      <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </td>
             </tr>
@@ -396,31 +431,106 @@
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- EDIT CAMERA MODAL                                                       -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <dialog ref="editModal" class="modal">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-mono font-bold text-sm mb-4">EDIT CAMERA</h3>
+
+        <div class="form-control mb-3">
+          <label class="label py-1">
+            <span class="label-text font-mono text-xs opacity-60">NAME</span>
+          </label>
+          <input v-model="editForm.name" type="text"
+            class="input input-bordered input-sm w-full font-mono"
+            :class="{ 'input-error': editError }" />
+        </div>
+
+        <div class="form-control mb-3">
+          <label class="label py-1">
+            <span class="label-text font-mono text-xs opacity-60">LOCATION (OPTIONAL)</span>
+          </label>
+          <input v-model="editForm.location" type="text" placeholder="Lobby, Floor 1…"
+            class="input input-bordered input-sm w-full font-mono" />
+        </div>
+
+        <div class="form-control mb-4">
+          <label class="label py-1">
+            <span class="label-text font-mono text-xs opacity-60">FPS</span>
+            <span class="label-text-alt font-mono text-xs opacity-60">{{ editForm.fps }}</span>
+          </label>
+          <input v-model.number="editForm.fps" type="range" min="1" max="30" step="1"
+            class="range range-xs range-primary" />
+          <div class="flex justify-between text-xs font-mono opacity-40 px-1">
+            <span>1</span><span>15</span><span>30</span>
+          </div>
+        </div>
+
+        <div v-if="editError" role="alert" class="alert alert-error text-xs font-mono p-2 mb-3">
+          {{ editError }}
+        </div>
+
+        <div class="modal-action mt-2">
+          <button class="btn btn-ghost btn-sm font-mono" @click="editModal?.close()">CANCEL</button>
+          <button class="btn btn-primary btn-sm font-mono"
+            :disabled="editSaving || !editForm.name.trim()"
+            @click="submitEdit">
+            <span v-if="editSaving" class="loading loading-spinner loading-xs"></span>
+            {{ editSaving ? 'SAVING…' : 'SAVE' }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- DELETE CAMERA MODAL                                                     -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <dialog ref="deleteModal" class="modal">
+      <div class="modal-box max-w-xs">
+        <h3 class="font-mono font-bold text-sm mb-2">DELETE CAMERA</h3>
+        <p class="text-sm opacity-70 mb-4">
+          Delete <span class="font-semibold">{{ deleteCamTarget?.name }}</span>?
+          This also removes all associated zones and cannot be undone.
+        </p>
+        <div v-if="deleteError" role="alert" class="alert alert-error text-xs font-mono p-2 mb-3">
+          {{ deleteError }}
+        </div>
+        <div class="modal-action mt-2">
+          <button class="btn btn-ghost btn-sm font-mono" @click="deleteModal?.close()">CANCEL</button>
+          <button class="btn btn-error btn-sm font-mono"
+            :disabled="deleteLoading"
+            @click="submitDelete">
+            <span v-if="deleteLoading" class="loading loading-spinner loading-xs"></span>
+            {{ deleteLoading ? 'DELETING…' : 'DELETE' }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
   </AppLayout>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import { useCamerasStore } from '@/stores/cameras'
 import { useAuthStore } from '@/stores/auth'
 import { useEventsStore } from '@/stores/events'
-import type { WebcamDevice } from '@/api/client'
+import { useZonesStore } from '@/stores/zones'
+import type { CameraRead, WebcamDevice } from '@/api/client'
 
 const cameras = useCamerasStore()
 const auth = useAuthStore()
 const eventsStore = useEventsStore()
+const zonesStore = useZonesStore()
+const router = useRouter()
 const layout = ref<'grid' | 'list'>('grid')
 const filterState = ref('')
 const showOverlays = ref(true)
-
-interface ZoneRead {
-  id: number; camera_id: number; name: string
-  coordinates: string; color: string; is_active: boolean
-}
-
-const zones = ref<ZoneRead[]>([])
 
 // Timer to force re-evaluation of alert flashes
 const now = ref(Date.now())
@@ -428,15 +538,8 @@ let flashTimer: ReturnType<typeof setInterval>
 
 onMounted(async () => {
   cameras.fetchAll()
+  zonesStore.fetchAll()
   flashTimer = setInterval(() => now.value = Date.now(), 500)
-  try {
-    const r = await fetch('/api/v1/zones', {
-      headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
-    })
-    if (r.ok) zones.value = await r.json()
-  } catch (e) {
-    console.error('Failed to load zones', e)
-  }
 })
 
 onUnmounted(() => {
@@ -459,12 +562,14 @@ const webcamCount = computed(() =>
   cameras.cameras.filter(c => c.source_type === 'webcam').length
 )
 
-function selectCam(_id: number) { /* Phase 5: open live stream modal */ }
+function selectCam(id: number) {
+  router.push({ path: '/pilot', query: { cam: id } })
+}
 
 // ── Overlays & Alert rendering ───────────────────────────────────────────────
 
 function zonesByCamera(cameraId: number) {
-  return zones.value.filter(z => z.camera_id === cameraId && z.is_active)
+  return zonesStore.zonesForCamera(cameraId)
 }
 
 function formatZonePoints(coords: string | [number, number][]) {
@@ -488,13 +593,16 @@ function getZoneLabelPos(coords: string | [number, number][]): { x: number, y: n
   }
 }
 
-function hasRecentAlert(cameraId: number): boolean {
-  // Use `now` ref so this reactively updates and clears the flash after 3s
+function recentAlertFor(cameraId: number) {
   const currentMs = now.value
   const recent = eventsStore.events.find(e => e.camera_id === cameraId)
-  if (!recent) return false
+  if (!recent) return null
   const ageSecs = (currentMs - new Date(recent.timestamp).getTime()) / 1000
-  return ageSecs < 3.0 // Flash red for 3 seconds after an alert
+  return ageSecs < 3.0 ? recent : null
+}
+
+function hasRecentAlert(cameraId: number): boolean {
+  return recentAlertFor(cameraId) !== null
 }
 
 // ── Enable / Disable toggle ───────────────────────────────────────────────────
@@ -507,6 +615,66 @@ async function toggleCam(id: number, isActive: boolean) {
     await cameras.setActive(id, isActive)
   } finally {
     toggling.value.delete(id)
+  }
+}
+
+// ── Edit Camera modal ─────────────────────────────────────────────────────────
+
+const editModal = ref<HTMLDialogElement | null>(null)
+const editSaving = ref(false)
+const editError = ref('')
+const editCamId = ref<number | null>(null)
+const editForm = ref({ name: '', location: '', fps: 15 })
+
+function openEditCam(cam: CameraRead) {
+  editCamId.value = cam.id
+  editForm.value = { name: cam.name, location: cam.location ?? '', fps: cam.fps ?? 15 }
+  editError.value = ''
+  editModal.value?.showModal()
+}
+
+async function submitEdit() {
+  if (!editForm.value.name.trim()) { editError.value = 'Name is required'; return }
+  editSaving.value = true
+  editError.value = ''
+  try {
+    await cameras.updateCamera(editCamId.value!, {
+      name: editForm.value.name.trim(),
+      location: editForm.value.location.trim() || undefined,
+      fps: editForm.value.fps,
+    })
+    editModal.value?.close()
+  } catch (e: any) {
+    editError.value = e.message ?? 'Failed to save'
+  } finally {
+    editSaving.value = false
+  }
+}
+
+// ── Delete Camera modal ───────────────────────────────────────────────────────
+
+const deleteModal = ref<HTMLDialogElement | null>(null)
+const deleteLoading = ref(false)
+const deleteError = ref('')
+const deleteCamTarget = ref<CameraRead | null>(null)
+
+function openDeleteCam(cam: CameraRead) {
+  deleteCamTarget.value = cam
+  deleteError.value = ''
+  deleteModal.value?.showModal()
+}
+
+async function submitDelete() {
+  if (!deleteCamTarget.value) return
+  deleteLoading.value = true
+  deleteError.value = ''
+  try {
+    await cameras.deleteCamera(deleteCamTarget.value.id)
+    deleteModal.value?.close()
+  } catch (e: any) {
+    deleteError.value = e.message ?? 'Failed to delete'
+  } finally {
+    deleteLoading.value = false
   }
 }
 

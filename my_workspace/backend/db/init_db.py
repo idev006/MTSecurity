@@ -32,6 +32,8 @@ async def _migrate(engine: AsyncEngine) -> None:
         "ALTER TABLE cameras ADD COLUMN device_name VARCHAR(256)",
         # Phase: Advanced Rule Engine (Logic Trees)
         "ALTER TABLE rules ADD COLUMN logic TEXT",
+        # Phase: Behavior-specific parameters
+        "ALTER TABLE rules ADD COLUMN behavior_params TEXT",
     ]
     async with engine.begin() as conn:
         for sql in migrations:

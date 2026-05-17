@@ -18,6 +18,7 @@ export const useSystemStore = defineStore('system', () => {
   let _ws: WebSocket | null = null
   let _pollTimer: ReturnType<typeof setInterval> | null = null
   let _reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  let _destroyed = false
 
   const isOnline = computed(() => wsState.value === 'connected')
   const cpuPercent = computed(() => health.value?.system.cpu_percent ?? 0)
@@ -52,6 +53,7 @@ export const useSystemStore = defineStore('system', () => {
     const token = localStorage.getItem('access_token')
     if (!token) return
 
+    _destroyed = false
     wsState.value = 'connecting'
     // Relative WS path — proxied by Vite in dev, nginx in prod
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
@@ -70,11 +72,14 @@ export const useSystemStore = defineStore('system', () => {
 
     _ws.onclose = () => {
       wsState.value = 'disconnected'
-      _reconnectTimer = setTimeout(connectWs, 5_000)
+      if (!_destroyed) {
+        _reconnectTimer = setTimeout(connectWs, 5_000)
+      }
     }
   }
 
   function disconnectWs() {
+    _destroyed = true
     if (_reconnectTimer) clearTimeout(_reconnectTimer)
     _ws?.close()
     _ws = null
@@ -83,7 +88,33 @@ export const useSystemStore = defineStore('system', () => {
 
   function handleWsMessage(msg: any) {
     if (msg.type === 'alert_fired') {
-      useEventsStore().prependAlert(msg.data)
+      const d = msg.data
+      // Map AlertFiredPayload → EventRead shape
+      useEventsStore().prependAlert({
+        id: d.alert_id,
+        camera_id: d.camera_id,
+        rule_id: null,
+        behavior: d.behavior,
+        severity: d.severity,
+        confidence: d.confidence ?? 0,
+        track_id: null,
+        snapshot_url: d.snapshot_url ?? null,
+        clip_url: d.clip_url ?? null,
+        occurred_at: new Date().toISOString(),
+        status: 'NEW',
+        acknowledged_at: null,
+        acknowledged_by: null,
+      })
+    }
+    if (msg.type === 'camera_status') {
+      const stateMap: Record<string, string> = {
+        connecting: 'CONNECTING', online: 'ONLINE', reconnecting: 'RECONNECTING',
+        error: 'ERROR', failed: 'FAILED', inactive: 'INACTIVE',
+      }
+      useCamerasStore().patchStatus(msg.camera_id, {
+        state: (stateMap[msg.data.status] ?? msg.data.status.toUpperCase()) as any,
+        error_msg: msg.data.error_msg ?? null,
+      })
     }
     if (msg.type === 'frame_ready') {
       useCamerasStore().patchStatus(msg.camera_id, {
@@ -93,7 +124,6 @@ export const useSystemStore = defineStore('system', () => {
       })
     }
     if (msg.type === 'track_update') {
-      console.log(`[WS] Track update for camera ${msg.camera_id}: ${msg.data.detections?.length || 0} detections`)
       useCamerasStore().patchStatus(msg.camera_id, {
         tracks: msg.data.detections || [],
       } as any)

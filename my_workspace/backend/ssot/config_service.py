@@ -68,7 +68,8 @@ class ConfigService:
             return self._cache[key]
         async with self._factory()() as session:
             cam = await session.get(Camera, camera_id)
-        self._cache[key] = cam
+        if cam is not None:
+            self._cache[key] = cam
         return cam
 
     async def get_active_cameras(self) -> list[Camera]:
@@ -98,7 +99,8 @@ class ConfigService:
             return self._cache[key]
         async with self._factory()() as session:
             zone = await session.get(Zone, zone_id)
-        self._cache[key] = zone
+        if zone is not None:
+            self._cache[key] = zone
         return zone
 
     async def update_zone(self, zone_id: int, data: dict[str, Any], actor: str) -> Zone | None:
@@ -123,7 +125,8 @@ class ConfigService:
             return self._cache[key]
         async with self._factory()() as session:
             rule = await session.get(Rule, rule_id)
-        self._cache[key] = rule
+        if rule is not None:
+            self._cache[key] = rule
         return rule
 
     async def get_active_rules(self) -> list[Rule]:
@@ -153,6 +156,12 @@ class ConfigService:
             keys = [k for k in self._cache if k.startswith(f"{scope}:")]
             for k in keys:
                 self._cache.pop(k, None)
+
+    async def notify(
+        self, scope: str, entity_id: int, changes: dict, actor: str = "system"
+    ) -> None:
+        """Publish CONFIG_CHANGED for creates/deletes that bypass update_*."""
+        await self._notify(scope, entity_id, actor, changes)
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

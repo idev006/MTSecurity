@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     model_path: Path = BASE_DIR / "data" / "models" / "yolo11n.xml"
     model_device: str = "CPU"          # "CPU" | "GPU" | "AUTO"
     ai_confidence_threshold: float = 0.6
+    ai_target_classes: list[int] | None = None  # None = all COCO classes; e.g. [0,15,16] = person+cat+dog
     ai_queue_max_wip: int = 2          # max concurrent AI inferences
 
     # ── Streaming ────────────────────────────────────────────────────────────

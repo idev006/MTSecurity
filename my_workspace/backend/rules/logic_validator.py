@@ -53,21 +53,27 @@ class LogicValidator:
         conditions = logic_tree.get("conditions", [])
 
         if operator == "AND":
+            # Empty AND → do NOT fire (no conditions = no intent to trigger)
+            if not conditions:
+                return False
             for cond in conditions:
                 if not self._evaluate_node(cond, context):
                     return False
             return True
 
         if operator == "OR":
+            # Empty OR → do NOT fire
+            if not conditions:
+                return False
             for cond in conditions:
                 if self._evaluate_node(cond, context):
                     return True
             return False
 
         if operator == "NOT":
-            # Assume NOT has exactly one child condition
+            # Empty NOT → do NOT fire (nothing to negate = undefined intent)
             if not conditions:
-                return True
+                return False
             return not self._evaluate_node(conditions[0], context)
 
         return False
@@ -106,7 +112,7 @@ class LogicValidator:
                 # and it's a person-sized object, we might want to trigger anyway.
                 # For now, let's just log and allow case-insensitive match.
                 if current_label == "nan" or current_label == "none":
-                    logger.warning(f"Detection label is '{current_label}' for track {track.id}. Check AI model/lighting.")
+                    logger.warning(f"Detection label is '{current_label}' for track {track.track_id}. Check AI model/lighting.")
                     # Fallback: if we expect a person and get nan, treat as potential match for safety
                     if target_class.lower() == "person":
                         result = True
@@ -125,8 +131,28 @@ class LogicValidator:
             behavior_type = params.get("type", context["rule_cfg"].get("behavior"))
             behavior = BEHAVIOR_REGISTRY.get(behavior_type)
             if behavior:
-                eval_config = {**context["rule_cfg"], **params}
+                # Keys that are not behavior-specific params
+                _reserved = {"type", "zone_id"}
+                # Extract behavior-specific params from this node (e.g. speed_threshold,
+                # min_frames, dwell_threshold_seconds, etc.) so each behavior node in a
+                # logic tree carries its own independent configuration.
+                node_bp = {k: v for k, v in params.items() if k not in _reserved}
+
+                eval_config = {**context["rule_cfg"]}
+                # If the behavior node embeds dwell_threshold_seconds (e.g. a loitering node
+                # inside a logic tree), extract it to the top-level config so the behavior
+                # reads it via config.get("dwell_threshold_seconds").  Use pop() so it does
+                # NOT end up inside behavior_params as well (loitering reads dwell from the
+                # top-level, not from behavior_params).
+                # Cascade priority: node param > rule-level field (already in eval_config).
+                if "dwell_threshold_seconds" in node_bp:
+                    eval_config["dwell_threshold_seconds"] = node_bp.pop("dwell_threshold_seconds")
+                # Node behavior_params take precedence over top-level behavior_params.
+                eval_config["behavior_params"] = node_bp if node_bp else (
+                    context["rule_cfg"].get("behavior_params") or {}
+                )
                 eval_config["zone_count"] = context.get("zone_count", 0)
+
                 eval_res = behavior.evaluate(
                     track=context["track"],
                     rule_id=context["rule_id"],

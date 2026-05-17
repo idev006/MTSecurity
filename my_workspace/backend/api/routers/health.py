@@ -23,9 +23,10 @@ async def health(request: Request) -> dict:
     uptime_s = int(time.monotonic() - _START)
     online = sum(1 for s in cam_states.values() if s.state == "ONLINE")
 
+    cfg = request.app.state.cfg
     return {
         "status": "ok",
-        "version": request.app.state.cfg.app_version,
+        "version": cfg.app_version,
         "uptime_seconds": uptime_s,
         "boot_state": sys_state.boot_state,
         "cameras": {
@@ -36,6 +37,12 @@ async def health(request: Request) -> dict:
             "cpu_percent": psutil.cpu_percent(interval=None),
             "ram_percent": psutil.virtual_memory().percent,
             "platform": platform.system(),
+        },
+        "notifications": {
+            "line":    cfg.line_channel_access_token is not None,
+            "discord": cfg.discord_webhook_url is not None,
+            "slack":   cfg.slack_webhook_url is not None,
+            "email":   cfg.smtp_host is not None,
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

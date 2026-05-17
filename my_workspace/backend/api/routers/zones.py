@@ -73,5 +73,7 @@ async def delete_zone(zone_id: int, request: Request, db: DBDep, user: CurrentUs
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
     await db.delete(zone)
     await db.commit()
-    await request.app.state.config_svc.invalidate("zone", zone_id)
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("zone", zone_id)
+    await config_svc.notify("zone", zone_id, {"deleted": True}, actor=user.username)
     logger.info("Zone deleted: id=%d by=%s", zone_id, user.username)

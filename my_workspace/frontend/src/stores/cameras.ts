@@ -40,11 +40,23 @@ export const useCamerasStore = defineStore('cameras', () => {
     }
   }
 
-  // Called by WebSocket hub when a frame arrives (updates runtime FPS/state)
+  // Called by WebSocket hub for live state updates
   function patchStatus(cameraId: number, patch: Partial<CameraStatus>) {
     const existing = statuses.value[cameraId]
     if (existing) {
       statuses.value[cameraId] = { ...existing, ...patch }
+    } else {
+      // Camera was added after initial fetchAll — create a minimal status entry
+      statuses.value[cameraId] = {
+        camera_id: cameraId,
+        state: 'CONNECTING',
+        fps: 0,
+        latency_ms: 0,
+        last_frame_at: null,
+        error_msg: null,
+        tracks: null,
+        ...patch,
+      } as CameraStatus
     }
   }
 
@@ -63,6 +75,16 @@ export const useCamerasStore = defineStore('cameras', () => {
   }): Promise<CameraRead> {
     const cam = await camerasApi.create(body)
     cameras.value = [...cameras.value, cam]
+    // Seed a CONNECTING status immediately; WebSocket will update it in real-time
+    statuses.value[cam.id] = {
+      camera_id: cam.id,
+      state: 'CONNECTING',
+      fps: 0,
+      latency_ms: 0,
+      last_frame_at: null,
+      error_msg: null,
+      tracks: null,
+    } as CameraStatus
     return cam
   }
 
@@ -76,6 +98,18 @@ export const useCamerasStore = defineStore('cameras', () => {
     if (cam) cam.is_active = isActive
   }
 
+  async function updateCamera(id: number, body: { name?: string; location?: string; fps?: number }): Promise<CameraRead> {
+    const updated = await camerasApi.update(id, body)
+    const idx = cameras.value.findIndex(c => c.id === id)
+    if (idx !== -1) cameras.value[idx] = updated
+    return updated
+  }
+
+  async function deleteCamera(id: number): Promise<void> {
+    await camerasApi.delete(id)
+    cameras.value = cameras.value.filter(c => c.id !== id)
+  }
+
   function reset() {
     cameras.value = []
     statuses.value = {}
@@ -85,6 +119,6 @@ export const useCamerasStore = defineStore('cameras', () => {
   return {
     cameras, statuses, loading, error,
     total, online, reconnecting, failed,
-    fetchAll, patchStatus, statusOf, addCamera, listWebcams, setActive, reset,
+    fetchAll, patchStatus, statusOf, addCamera, listWebcams, setActive, updateCamera, deleteCamera, reset,
   }
 })

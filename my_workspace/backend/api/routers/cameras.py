@@ -98,6 +98,10 @@ async def create_camera(body: CameraCreate, request: Request, db: DBDep, user: C
     config_svc = request.app.state.config_svc
     await config_svc.invalidate("camera")
 
+    # Start camera thread immediately (invalidate does not publish CONFIG_CHANGED)
+    cam_manager = request.app.state.cam_manager
+    await cam_manager.start_camera(cam.id)
+
     logger.info(
         "Camera created: id=%d name=%s source=%s by=%s",
         cam.id, cam.name, cam.source_type, user.username,
@@ -142,7 +146,10 @@ async def delete_camera(camera_id: int, request: Request, db: DBDep, user: Curre
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Camera not found")
     await db.delete(cam)
     await db.commit()
-    await request.app.state.config_svc.invalidate("camera", camera_id)
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("camera", camera_id)
+    await config_svc.notify("camera", camera_id, {"deleted": True}, actor=user.username)
+    request.app.state.cam_manager.stop_camera(camera_id)
     logger.info("Camera deleted: id=%d by=%s", camera_id, user.username)
 
 
@@ -204,22 +211,31 @@ async def mjpeg_stream(
     frame_buffer = request.app.state.frame_buffer
 
     async def generate():
-        boundary = b"--frame"
-        while not await request.is_disconnected():
-            frame = frame_buffer.get(camera_id)
-            if frame is None:
-                await _asyncio.sleep(0.05)
-                continue
-            yield (
-                boundary + b"\r\n"
-                b"Content-Type: image/jpeg\r\n\r\n"
-                + frame.data
-                + b"\r\n"
-            )
-            await _asyncio.sleep(1 / 30)  # cap at 30 fps
+        boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+        last_data: bytes | None = None
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                frame = frame_buffer.get(camera_id)
+                if frame is None:
+                    await _asyncio.sleep(0.05)
+                    continue
+                # Skip duplicate frame (camera hasn't produced a new one yet)
+                if frame.data is last_data:
+                    await _asyncio.sleep(1 / 30)
+                    continue
+                last_data = frame.data
+                yield boundary + frame.data + b"\r\n"
+                await _asyncio.sleep(1 / 30)  # cap at 30 fps
+        except _asyncio.CancelledError:
+            pass  # client disconnected cleanly
+        except Exception:
+            logger.exception("MJPEG stream error camera_id=%d", camera_id)
 
     return StreamingResponse(
         generate(),
         media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 

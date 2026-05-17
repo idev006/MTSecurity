@@ -72,6 +72,7 @@ class RuleTriggeredPayload(_Payload):
     track_id: int | None
     behavior: str               # "intrusion", "loitering", etc.
     confidence: float
+    severity: str = "medium"    # "low", "medium", "high", "critical"
     snapshot_path: str | None
     metadata: dict[str, Any] = {}
 

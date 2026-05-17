@@ -458,13 +458,108 @@ python main.py --reload  # dev — auto-reloads on any .py change
 
 ---
 
+## BUG-005 — AI Pipeline: detect เฉพาะ person ไม่ detect cat/dog หรือ object อื่นๆ
+
+**Date:** 2026-05-15
+**Severity:** High (AI detection ทำงานได้แค่ 1 ใน 80 class)
+**Session:** Context window #4
+
+### Symptom
+- Pilot Console แสดง bounding box เฉพาะ `person` เท่านั้น
+- `cat`, `dog`, `laptop`, `car` และ object อื่นๆ ที่อยู่ในกล้องไม่ถูก detect เลย
+- ไม่มี error ใดๆ ใน log
+
+### Investigation Path
+1. ตรวจสอบ `ai/pipeline.py` — พบ `self._target_classes = target_classes or [0]` (COCO class 0 = person)
+2. ตรวจสอบ `api/app.py` — `AIPipeline` ถูก init โดยไม่ส่ง `target_classes` → default เป็น `[0]`
+3. ตรวจสอบ `ai/detector.py` `postprocess_yolo()` — มี filter `np.isin(class_ids, target_classes)` ซึ่ง filter ออกทุก class ยกเว้น person
+
+### Root Cause (Layer 1 — หลัก)
+```python
+# ai/pipeline.py — BEFORE (broken)
+self._target_classes = target_classes or [0]   # 0 = person
+# AIPipeline ถูก init ใน app.py โดยไม่ส่ง target_classes
+# → default เป็น [0] → filter ออกทุก class ยกเว้น person (COCO index 0)
+```
+
+COCO class indices สำคัญ: `person=0`, `cat=15`, `dog=16`, `laptop=63`, `car=2`
+
+### Root Cause (Layer 2 — ซ่อนอยู่)
+Process ที่ listen port 8000 เป็น **system Python** (`C:\Users\acer\AppData\Local\Python\pythoncore-3.12-64\python.exe`) ซึ่งไม่มี `openvino` ติดตั้ง → `InferenceEngine` รันใน **dummy mode** → `infer()` return `([], 0.0)` เสมอ → ไม่มี detection เลยแม้แต่ person
+
+### Fix
+```python
+# ai/pipeline.py — AFTER (fixed)
+self._target_classes = target_classes  # None = detect ทุก COCO class
+
+# config.py — เพิ่ม configurable field
+ai_target_classes: list[int] | None = None  # None = all; e.g. [0,15,16] = person+cat+dog
+
+# api/app.py — ส่งจาก config
+ai_pipeline = AIPipeline(
+    ...
+    target_classes=cfg.ai_target_classes,  # ← เพิ่มบรรทัดนี้
+)
+```
+
+Layer 2: Kill process system Python และ restart ด้วย project venv (`D:\dev\MTSecurity\my_env\Scripts\python`)
+
+### Verification
+หลังแก้ไข browser DOM แสดง: `["PERSON: TRK-154 (85%)", "LAPTOP: TRK-155 (73%)"]` — detect ได้หลาย class พร้อมกัน
+
+### Prevention Rules
+1. **ตรวจสอบ default ของ `target_classes`** ใน `AIPipeline.__init__` ทุกครั้งที่ตั้ง pipeline ใหม่ — `or [0]` เป็น footgun
+2. **ก่อน debug detection ปัญหา:** ตรวจสอบว่า `InferenceEngine.is_ready` เป็น `True` เสมอ (`is_ready = _infer_req is not None`)
+3. **ตรวจสอบ port binding:** `netstat -ano | findstr ":8000"` → verify PID เป็น project venv process
+4. **Verify OpenVINO:** `python -c "import openvino; print(openvino.__version__)"` ใน venv ก่อน start backend
+5. ถ้าต้องการ detect เฉพาะบาง class → ใช้ `.env`: `AI_TARGET_CLASSES=[0,15,16]`
+
+---
+
+## BUG-006 — Backend ถูกรันด้วย System Python แทน Project Venv
+
+**Date:** 2026-05-15
+**Severity:** High (AI ไม่ทำงานเลย, packages หาย)
+**Session:** Context window #4
+
+### Symptom
+- AI detection ไม่มีผลลัพธ์เลย (dummy mode)
+- `netstat -ano | findstr ":8000"` แสดง PID ที่ไม่ใช่ process ที่เราตั้งใจรัน
+
+### Root Cause
+มีสอง Python process รัน `main.py --reload` พร้อมกัน:
+- PID ของ project venv (`D:\dev\MTSecurity\my_env\Scripts\python`) — มี openvino ✓
+- PID ของ system Python (`C:\Users\acer\AppData\Local\Python\pythoncore-3.12-64\python.exe`) — ไม่มี openvino ✗
+
+Process ที่ start ก่อนจะ bind port 8000 ได้ก่อน ถ้า system Python ชนะจะทำให้ AI อยู่ใน dummy mode
+
+### Fix
+```powershell
+# 1. หา PID ที่ listen port 8000
+netstat -ano | findstr ":8000"
+
+# 2. ตรวจสอบว่า PID นั้นเป็น Python ตัวไหน
+Get-WmiObject Win32_Process -Filter "ProcessId=<PID>" | Select-Object ExecutablePath
+
+# 3. ถ้าเป็น system Python — kill และ restart ด้วย venv
+Stop-Process -Id <PID> -Force
+Start-Process cmd -ArgumentList "/k `"cd /d D:\dev\MTSecurity\my_workspace\backend && D:\dev\MTSecurity\my_env\Scripts\python main.py --reload`""
+```
+
+### Prevention Rules
+1. **ใช้ batch file dev.bat** (มีอยู่แล้วใน project) แทนการรัน command เอง — batch file ระบุ path venv ตายตัว
+2. **ปิด terminal เก่าให้หมด** ก่อน start backend ใหม่ทุกครั้ง
+3. **Quick verify หลัง start:** `(Invoke-WebRequest http://localhost:8000/api/v1/health).Content` ตรวจ `boot_state: RUNNING`
+
+---
+
 ## TODO — Known technical debt
 
 | Item | Location | Priority | Notes |
 |------|----------|----------|-------|
 | Check other list endpoints for `Depends()` bug | `rules.py`, `users.py` GET list | High | Same pattern as BUG-001 may exist |
-| Add total count to EventFilter response | backend events.py | Low | Currently frontend guesses hasNextPage by row count |
+| ~~Add total count to EventFilter response~~ | ~~backend events.py~~ | ~~Low~~ | **Fixed** — EventPage schema + COUNT(*) query (2026-05-15) |
 | LPR integration in AI pipeline | `ai/lpr/` | Low | Currently wired but not active |
 | NLQ (Natural Language Query) | `nlq/` | Low | Needs Anthropic API key |
 | Snapshot cleanup job | alerts/snapshot.py | Medium | max_snapshot_age_days in config but no cron |
-| WebSocket reconnect on frontend | stores/system.ts | Medium | Does it auto-reconnect after network drop? |
+| ~~WebSocket reconnect on frontend~~ | ~~stores/system.ts~~ | ~~Medium~~ | **Fixed** — `_destroyed` flag กัน reconnect timer leak (2026-05-15) |

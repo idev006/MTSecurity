@@ -6,6 +6,7 @@ Falls back to "Webcam {index}" on error or non-Windows platforms.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import subprocess
 import sys
@@ -15,7 +16,9 @@ import cv2
 
 logger = logging.getLogger(__name__)
 
-_WEBCAM_BACKEND = cv2.CAP_ANY
+# DSHOW is significantly faster on Windows for probing — CAP_ANY tries multiple
+# backends sequentially and has ~1-2s timeout per missing index.
+_WEBCAM_BACKEND = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
 _MAX_INDEX = 9
 
 
@@ -69,8 +72,27 @@ class EnumeratedDevice:
     device_name: str     # fingerprint key — matches WMI friendly name
 
 
-def enumerate_webcams(max_index: int = _MAX_INDEX) -> list[EnumeratedDevice]:
+def _probe_index(i: int) -> bool:
+    """Open and immediately release a capture to test if index exists."""
+    cap = cv2.VideoCapture(i, _WEBCAM_BACKEND)
+    opened = cap.isOpened()
+    cap.release()
+    return opened
+
+
+def enumerate_webcams(
+    max_index: int = _MAX_INDEX,
+    skip_indices: set[int] | None = None,
+) -> list[EnumeratedDevice]:
     """Probe device indices 0‥max_index and return available webcams.
+
+    Probes all indices in parallel (ThreadPoolExecutor) so total time is
+    bounded by the slowest single probe rather than the sum.
+
+    ``skip_indices`` — device indices to exclude from probing.  Pass the set
+    of indices currently held by active CameraThreads so the probe never opens
+    a DirectShow device that is already streaming (doing so can corrupt the
+    active capture on Windows).
 
     Each returned device includes:
     - ``index``       — current cv2 device index
@@ -78,15 +100,21 @@ def enumerate_webcams(max_index: int = _MAX_INDEX) -> list[EnumeratedDevice]:
     - ``device_name`` — stable fingerprint from WMI / fallback string
     """
     wmic_names = _wmic_device_names()
-    found: list[EnumeratedDevice] = []
+    skip = skip_indices or set()
+    indices = [i for i in range(max_index + 1) if i not in skip]
 
-    for i in range(max_index + 1):
-        cap = cv2.VideoCapture(i, _WEBCAM_BACKEND)
-        if cap.isOpened():
+    if not indices:
+        return []
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(indices)) as ex:
+        opened_flags = list(ex.map(_probe_index, indices))
+
+    found: list[EnumeratedDevice] = []
+    for i, opened in zip(indices, opened_flags):
+        if opened:
             name = _device_name_for_index(i, wmic_names)
             found.append(EnumeratedDevice(index=i, label=name, device_name=name))
             logger.debug("Webcam found: index=%d name=%r", i, name)
-        cap.release()
 
     return found
 
@@ -98,10 +126,12 @@ def find_index_by_name(device_name: str, max_index: int = _MAX_INDEX) -> int | N
     Used by WebcamWatcher to remap indices after a reconnect.
     """
     wmic_names = _wmic_device_names()
-    for i in range(max_index + 1):
-        cap = cv2.VideoCapture(i, _WEBCAM_BACKEND)
-        opened = cap.isOpened()
-        cap.release()
+    indices = list(range(max_index + 1))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(indices)) as ex:
+        opened_flags = list(ex.map(_probe_index, indices))
+
+    for i, opened in zip(indices, opened_flags):
         if opened and _device_name_for_index(i, wmic_names) == device_name:
             return i
     return None

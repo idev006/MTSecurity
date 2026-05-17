@@ -24,7 +24,13 @@ export const useZonesStore = defineStore('zones', () => {
   }
 
   function zonesForCamera(cameraId: number) {
-    return zones.value.filter(z => z.camera_id === cameraId)
+    return zones.value.filter(z => z.camera_id === cameraId && z.is_active)
+  }
+
+  async function patchZone(id: number, body: Partial<ZoneRead>): Promise<ZoneRead> {
+    const updated = await zonesApi.update(id, body)
+    zones.value = zones.value.map(z => z.id === id ? updated : z)
+    return updated
   }
 
   function rulesForZone(zoneId: number) {
@@ -38,5 +44,6 @@ export const useZonesStore = defineStore('zones', () => {
     fetchAll,
     zonesForCamera,
     rulesForZone,
+    patchZone,
   }
 })

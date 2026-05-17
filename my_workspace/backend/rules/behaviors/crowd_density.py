@@ -31,7 +31,11 @@ class CrowdDensityBehavior(RuleBehavior):
         config: dict[str, Any],
     ) -> TriggerResult:
         zone_count: int = config.get("zone_count", 0)
-        max_count: int = config.get("dwell_threshold_seconds", 5)  # reuse field as max_persons
+        # max_persons lives in behavior_params (set via UI).
+        # Default 5: trigger when more than 5 people are detected in the zone.
+        # (dwell_threshold_seconds is meaningless for crowd_density and is ignored.)
+        bp: dict = config.get("behavior_params") or {}
+        max_count: int = bp.get("max_persons", 5)
         threshold = config.get("confidence_threshold", 0.6)
 
         if track.confidence < threshold:

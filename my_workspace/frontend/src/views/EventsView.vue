@@ -74,7 +74,7 @@
 
         <!-- Card header -->
         <div class="flex items-center justify-between px-4 py-2.5 border-b border-base-300">
-          <span class="font-mono text-xs opacity-40">{{ rows.length }} EVENTS</span>
+          <span class="font-mono text-xs opacity-40">{{ total.toLocaleString() }} EVENTS</span>
           <span v-if="loading" class="loading loading-spinner loading-xs opacity-30"></span>
         </div>
 
@@ -136,14 +136,13 @@
                 <td class="text-right pr-2">
                   <div class="flex gap-1 justify-end">
                     <div v-if="ev.snapshot_url" class="tooltip tooltip-left" data-tip="View snapshot">
-                      <a :href="`${ev.snapshot_url}?token=${token}`"
-                        target="_blank" class="btn btn-xs btn-square btn-ghost">
+                      <button class="btn btn-xs btn-square btn-ghost" @click="openSnapshot(ev)">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
                         </svg>
-                      </a>
+                      </button>
                     </div>
                     <div class="tooltip tooltip-left" :data-tip="ev.status === 'NEW' ? 'Acknowledge' : 'Already acknowledged'">
                       <button class="btn btn-xs btn-square"
@@ -204,7 +203,7 @@
             <button class="join-item btn btn-xs btn-ghost font-mono"
               :disabled="page <= 1" @click="prevPage">← PREV</button>
             <button class="join-item btn btn-xs btn-ghost font-mono pointer-events-none opacity-60">
-              PAGE {{ page }}
+              PAGE {{ page }} / {{ Math.max(1, Math.ceil(total / pageSize)) }}
             </button>
             <button class="join-item btn btn-xs btn-ghost font-mono"
               :disabled="!hasNextPage" @click="nextPage">NEXT →</button>
@@ -212,6 +211,77 @@
         </div>
       </div>
     </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <!-- SNAPSHOT MODAL                                                          -->
+    <!-- ══════════════════════════════════════════════════════════════════════ -->
+    <dialog ref="snapshotModal" class="modal">
+      <div class="modal-box max-w-3xl p-0 overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300 bg-base-200">
+          <div class="flex items-center gap-3">
+            <span class="badge badge-sm font-mono" :class="sevClass(snapshotEv?.severity ?? '')">
+              {{ (snapshotEv?.severity ?? '').toUpperCase() }}
+            </span>
+            <span class="font-mono text-xs font-bold tracking-wider capitalize">
+              {{ snapshotEv?.behavior.replace(/_/g, ' ') }}
+            </span>
+            <span class="font-mono text-xs opacity-50">
+              CAM {{ snapshotEv?.camera_id }} · {{ snapshotEv ? relTime(snapshotEv.occurred_at) : '' }}
+            </span>
+          </div>
+          <div class="flex items-center gap-2">
+            <!-- Open in new tab -->
+            <a v-if="snapshotEv?.snapshot_url"
+              :href="`${snapshotEv.snapshot_url}?token=${token}`"
+              target="_blank"
+              class="btn btn-xs btn-ghost font-mono gap-1 opacity-60 hover:opacity-100">
+              <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+              OPEN
+            </a>
+            <button class="btn btn-xs btn-square btn-ghost opacity-60 hover:opacity-100"
+              @click="snapshotModal?.close()">
+              <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Image -->
+        <div class="bg-black flex items-center justify-center min-h-48">
+          <img v-if="snapshotEv?.snapshot_url"
+            :src="`${snapshotEv.snapshot_url}?token=${token}`"
+            class="max-w-full max-h-[70vh] object-contain"
+            alt="Event snapshot" />
+          <span v-else class="opacity-30 font-mono text-xs">NO IMAGE</span>
+        </div>
+
+        <!-- Footer metadata -->
+        <div class="px-4 py-2.5 border-t border-base-300 bg-base-200 flex items-center gap-4 flex-wrap">
+          <span class="font-mono text-xs opacity-50">
+            CONF {{ snapshotEv ? (snapshotEv.confidence * 100).toFixed(0) + '%' : '—' }}
+          </span>
+          <span class="font-mono text-xs opacity-50">
+            STATUS
+            <span class="font-bold" :class="statusClass(snapshotEv?.status ?? '')">
+              {{ snapshotEv?.status }}
+            </span>
+          </span>
+          <span v-if="snapshotEv?.acknowledged_by" class="font-mono text-xs opacity-50">
+            ACK BY {{ snapshotEv.acknowledged_by }}
+          </span>
+          <span class="font-mono text-xs opacity-30 ml-auto">
+            ID #{{ snapshotEv?.id }}
+          </span>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
   </AppLayout>
 </template>
 
@@ -222,19 +292,30 @@ import { eventsApi, type EventRead } from '@/api/client'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
 
+
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const token = computed(() => auth.token)
 
+// ── Snapshot modal ────────────────────────────────────────────────────────────
+const snapshotModal = ref<HTMLDialogElement | null>(null)
+const snapshotEv    = ref<EventRead | null>(null)
+
+function openSnapshot(ev: EventRead) {
+  snapshotEv.value = ev
+  snapshotModal.value?.showModal()
+}
+
 // ── Local state — NOT shared store, avoids race with AppLayout.fetchRecent() ──
 const rows    = ref<EventRead[]>([])
 const loading = ref(false)
+const total   = ref(0)
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 const PAGE_SIZES  = [10, 25, 50, 100]
 const page        = ref(1)
 const pageSize    = ref(25)
-const hasNextPage = ref(true)
+const hasNextPage = computed(() => page.value * pageSize.value < total.value)
 
 // ── Filters (all server-side) ─────────────────────────────────────────────────
 const severity = ref('')
@@ -272,8 +353,9 @@ async function load() {
     if (status.value)   params.status   = status.value
     if (behavior.value) params.behavior  = behavior.value
 
-    rows.value = await eventsApi.list(params)
-    hasNextPage.value = rows.value.length >= pageSize.value
+    const page_data = await eventsApi.list(params)
+    rows.value = page_data.items
+    total.value = page_data.total
   } catch {
     // keep existing rows on error
   } finally {

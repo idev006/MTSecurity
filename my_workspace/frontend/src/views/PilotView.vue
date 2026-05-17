@@ -52,28 +52,30 @@
                 <g v-if="uiSettings.showTracks">
                   <g v-for="track in activeTracks" :key="track.track_id">
                     <!-- Bounding Box -->
-                    <rect 
-                      :x="track.bbox.x1 * vWidth" 
-                      :y="track.bbox.y1 * vHeight" 
-                      :width="(track.bbox.x2 - track.bbox.x1) * vWidth" 
+                    <rect
+                      :x="track.bbox.x1 * vWidth"
+                      :y="track.bbox.y1 * vHeight"
+                      :width="(track.bbox.x2 - track.bbox.x1) * vWidth"
                       :height="(track.bbox.y2 - track.bbox.y1) * vHeight"
-                      fill="none" 
-                      :stroke="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'" 
-                      :stroke-width="hasRecentAlert(primaryId!) ? 4 : 2" 
+                      fill="none"
+                      :stroke="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'"
+                      :stroke-width="hasRecentAlert(primaryId!) ? OVR.boxStrokeWidth * 2 : OVR.boxStrokeWidth"
                       class="transition-all duration-75" />
-                    
-                    <!-- Centroid Dot (Matches CamerasView) -->
-                    <circle 
-                      :cx="((track.bbox.x1 + track.bbox.x2) / 2) * vWidth" 
-                      :cy="((track.bbox.y1 + track.bbox.y2) / 2) * vHeight" 
-                      r="4" 
+
+                    <!-- Centroid Dot -->
+                    <circle
+                      :cx="((track.bbox.x1 + track.bbox.x2) / 2) * vWidth"
+                      :cy="((track.bbox.y1 + track.bbox.y2) / 2) * vHeight"
+                      :r="OVR.centroidRadius"
                       :fill="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'" />
 
                     <!-- Label HUD -->
-                    <g :transform="`translate(${track.bbox.x1 * vWidth}, ${track.bbox.y1 * vHeight < 25 ? (track.bbox.y1 * vHeight) : (track.bbox.y1 * vHeight - 18)})`">
-                      <rect x="0" y="0" :width="getTextWidth(track.label, track.track_id)" height="18" 
+                    <g :transform="`translate(${track.bbox.x1 * vWidth}, ${track.bbox.y1 * vHeight < OVR.labelHeight + 4 ? (track.bbox.y1 * vHeight) : (track.bbox.y1 * vHeight - OVR.labelHeight)})`">
+                      <rect x="0" y="0" :width="getTextWidth(track.label, track.track_id)" :height="OVR.labelHeight"
                         :fill="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'" fill-opacity="0.9" />
-                      <text x="5" y="13" class="text-[11px] font-black fill-white font-mono uppercase tracking-tighter">
+                      <text :x="OVR.labelPaddingX" :y="OVR.labelHeight - 3"
+                        :style="`font-size:${OVR.labelFontSize}px`"
+                        class="font-black fill-white font-mono uppercase tracking-tighter">
                         {{ hasRecentAlert(primaryId!) ? `🚨 ${track.label.toUpperCase()}` : `${track.label.toUpperCase()}: TRK-${track.track_id} (${Math.round(track.confidence * 100)}%)` }}
                       </text>
                     </g>
@@ -231,7 +233,7 @@
                     <span>{{ fmtTime(ev.occurred_at) }}</span>
                   </div>
                   <!-- Hover-reveal actions -->
-                  <div class="flex gap-1.5 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div class="flex gap-1.5 mt-2">
                     <button class="btn btn-xs btn-outline btn-primary font-mono text-[9px]" @click="setPrimary(ev.camera_id)">
                       VIEW
                     </button>
@@ -403,6 +405,9 @@ import { useEventsStore } from '@/stores/events'
 import { useSystemStore } from '@/stores/system'
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
+import { UI_CONFIG } from '@/config/uiConfig'
+
+const OVR = UI_CONFIG.overlay
 
 const cameras = useCamerasStore()
 const events  = useEventsStore()
@@ -441,9 +446,7 @@ const primaryCamera = computed(() =>
 
 const activeZones = computed(() => {
   if (!primaryId.value) return []
-  const filtered = zones.zones.filter(z => Number(z.camera_id) === Number(primaryId.value))
-  console.log(`[Pilot] Found ${filtered.length} zones for Camera ${primaryId.value}`)
-  return filtered
+  return zones.zones.filter(z => Number(z.camera_id) === Number(primaryId.value) && z.is_active)
 })
 
 const activeTracks = computed(() => {
@@ -535,8 +538,7 @@ function getTrackColor(label: string) {
 }
 
 function getTextWidth(label: string, id: number) {
-  // Rough calculation: characters * 8px + padding
-  return (`#${id} ${label}`.length * 8) + 12
+  return (`#${id} ${label}`.length * OVR.labelCharWidth) + OVR.labelPaddingX * 2
 }
 
 function closeModal() {

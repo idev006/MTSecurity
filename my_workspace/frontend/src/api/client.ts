@@ -109,6 +109,13 @@ export interface EventRead {
   acknowledged_by: string | null
 }
 
+export interface EventPage {
+  items: EventRead[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface HealthResponse {
   status: string
   version: string
@@ -116,6 +123,7 @@ export interface HealthResponse {
   boot_state: string
   cameras: { total: number; online: number }
   system: { cpu_percent: number; ram_percent: number; platform: string }
+  notifications: { line: boolean; discord: boolean; slack: boolean; email: boolean }
   timestamp: string
 }
 
@@ -147,7 +155,7 @@ export const camerasApi = {
 export const eventsApi = {
   list: (params?: Record<string, string | number>) => {
     const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''
-    return get<EventRead[]>(`/events${qs}`)
+    return get<EventPage>(`/events${qs}`)
   },
   get:        (id: number)   => get<EventRead>(`/events/${id}`),
   acknowledge: (id: number, note?: string) =>
@@ -165,12 +173,14 @@ export interface ZoneRead {
   name: string
   coordinates: string // JSON
   color: string
+  is_active: boolean
 }
 
 export const zonesApi = {
   list: () => get<ZoneRead[]>('/zones'),
   get: (id: number) => get<ZoneRead>(`/zones/${id}`),
   create: (body: unknown) => post<ZoneRead>('/zones', body),
+  update: (id: number, body: unknown) => patch<ZoneRead>(`/zones/${id}`, body),
   delete: (id: number) => del(`/zones/${id}`),
 }
 
@@ -192,13 +202,18 @@ export const lprApi = {
 // ── Rules ─────────────────────────────────────────────────────────────────────
 export interface RuleRead {
   id: number
-  camera_id: number
-  zone_id: number | null
+  zone_id: number
   name: string
   behavior: string
-  severity: string
   is_active: boolean
-  config: string // JSON
+  confidence_threshold: number
+  dwell_threshold_seconds: number
+  cooldown_seconds: number
+  severity: string
+  schedule: Record<string, any> | null
+  logic: Record<string, any> | null
+  behavior_params: Record<string, any> | null
+  created_at: string
 }
 
 export const rulesApi = {

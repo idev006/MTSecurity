@@ -31,5 +31,8 @@ class Rule(TimestampMixin, Base):
     # Advanced Logic — JSON Tree for AND/OR conditions
     logic: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Behavior-specific parameters — JSON dict
+    behavior_params: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     zone: Mapped["Zone"] = relationship(back_populates="rules")
     events: Mapped[list["Event"]] = relationship(back_populates="rule")

@@ -39,12 +39,15 @@ async def create_rule(body: RuleCreate, request: Request, db: DBDep, user: Curre
         severity=data["severity"],
         schedule=json.dumps(data["schedule"]) if data["schedule"] else None,
         logic=json.dumps(data["logic"]) if data["logic"] else None,
+        behavior_params=json.dumps(data["behavior_params"]) if data.get("behavior_params") else None,
     )
     db.add(rule)
     await db.flush()
     await db.refresh(rule)
     await db.commit()
-    await request.app.state.config_svc.invalidate("rule")
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("rule", rule.id)
+    await config_svc.notify("rule", rule.id, {"is_active": rule.is_active}, actor=user.username)
     logger.info("Rule created: id=%d behavior=%s by=%s", rule.id, rule.behavior, user.username)
     return rule
 
@@ -66,6 +69,8 @@ async def update_rule(
         data["schedule"] = json.dumps(data["schedule"])
     if "logic" in data:
         data["logic"] = json.dumps(data["logic"])
+    if "behavior_params" in data:
+        data["behavior_params"] = json.dumps(data["behavior_params"])
     rule = await request.app.state.config_svc.update_rule(rule_id, data, actor=user.username)
     if rule is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")
@@ -80,5 +85,7 @@ async def delete_rule(rule_id: int, request: Request, db: DBDep, user: CurrentUs
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")
     await db.delete(rule)
     await db.commit()
-    await request.app.state.config_svc.invalidate("rule", rule_id)
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("rule", rule_id)
+    await config_svc.notify("rule", rule_id, {"deleted": True}, actor=user.username)
     logger.info("Rule deleted: id=%d by=%s", rule_id, user.username)

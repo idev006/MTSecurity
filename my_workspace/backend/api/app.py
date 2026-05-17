@@ -42,6 +42,18 @@ async def _lifespan(app: FastAPI):
     cfg.ensure_dirs()
     logger.info("MTSecurity v%s starting — env=%s", cfg.app_version, cfg.environment)
 
+    # Install a global asyncio exception handler so silently-crashed Tasks
+    # (the default just prints to stderr and swallows the traceback) get
+    # properly logged.  This is the #1 debugging tool for concurrent crashes.
+    def _asyncio_exc_handler(loop, context):
+        exc = context.get("exception")
+        msg = context.get("message", "unknown asyncio error")
+        if exc is not None:
+            logger.error("Unhandled asyncio exception — %s", msg, exc_info=exc)
+        else:
+            logger.error("Unhandled asyncio error — %s | context=%s", msg, context)
+    asyncio.get_running_loop().set_exception_handler(_asyncio_exc_handler)
+
     state_reg = StateRegistry()
     state_reg.set_boot_state("INITIALIZING")
 
@@ -84,13 +96,17 @@ async def _lifespan(app: FastAPI):
     webcam_watcher.start()
 
     # ── 6. AI Pipeline ───────────────────────────────────────────────────────
+    # compile_model() is a blocking CPU-bound call — run off the event loop
     model_reg = ModelRegistry(device=cfg.model_device)
-    inference_engine = InferenceEngine(model_reg, "yolov11n", cfg.model_path)
+    inference_engine = await loop.run_in_executor(
+        None, lambda: InferenceEngine(model_reg, "yolov11n", cfg.model_path)
+    )
     ai_pipeline = AIPipeline(
         buffer=frame_buffer,
         engine=inference_engine,
         bus=bus,
         confidence_threshold=cfg.ai_confidence_threshold,
+        target_classes=cfg.ai_target_classes,
     )
     ai_pipeline.start(loop)
 

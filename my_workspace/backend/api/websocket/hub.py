@@ -27,9 +27,10 @@ class WebSocketHub:
     Clients send a subscribe message to filter by camera:
         {"type": "subscribe", "camera_ids": [1, 2, 3]}
 
-    Hub pushes two event types:
+    Hub pushes these event types:
         {"type": "alert_fired", "data": {...}}
         {"type": "frame_ready", "camera_id": N, "data": {...}}
+        {"type": "camera_status", "camera_id": N, "data": {"state": "...", "error_msg": "..."}}
     """
 
     def __init__(self) -> None:
@@ -71,6 +72,10 @@ class WebSocketHub:
         envelope = json.dumps({"type": "track_update", "camera_id": camera_id, "data": payload})
         await self._broadcast_filtered(camera_id, envelope)
 
+    async def broadcast_camera_status(self, camera_id: int, payload: dict) -> None:
+        envelope = json.dumps({"type": "camera_status", "camera_id": camera_id, "data": payload})
+        await self._broadcast_filtered(camera_id, envelope)
+
     async def _broadcast_all(self, text: str) -> None:
         async with self._lock:
             clients = list(self._clients)
@@ -93,6 +98,7 @@ class WebSocketHub:
         bus.subscribe(MTPMsgType.ALERT_FIRED, self._on_alert_fired)
         bus.subscribe(MTPMsgType.FRAME_READY, self._on_frame_ready)
         bus.subscribe(MTPMsgType.TRACK_UPDATE, self._on_track_update)
+        bus.subscribe(MTPMsgType.CAMERA_STATUS, self._on_camera_status)
 
     async def _on_alert_fired(self, msg: MTPMessage) -> None:
         await self.broadcast_alert(msg.payload)
@@ -104,6 +110,10 @@ class WebSocketHub:
     async def _on_track_update(self, msg: MTPMessage) -> None:
         camera_id = msg.payload.get("camera_id", 0)
         await self.broadcast_track_update(camera_id, msg.payload)
+
+    async def _on_camera_status(self, msg: MTPMessage) -> None:
+        camera_id = msg.payload.get("camera_id", 0)
+        await self.broadcast_camera_status(camera_id, msg.payload)
 
     @property
     def client_count(self) -> int:

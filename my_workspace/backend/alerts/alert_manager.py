@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from alerts.notifications.dispatcher import NotificationDispatcher
     from protocol.message_bus import MessageBus
     from ssot.config_service import ConfigService
-    from ai.frame_buffer import FrameBuffer
+    from ingestion.frame_buffer import FrameBuffer
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -127,8 +127,8 @@ class AlertManager:
                 except Exception as e:
                     logger.error("AlertManager: Failed to capture snapshot for event %d: %s", event_id, e, exc_info=True)
             else:
-                logger.warning("AlertManager: No frame found in buffer for camera %d. Buffer keys: %s", 
-                               camera_id, list(self._frame_buffer._frames.keys()))
+                logger.warning("AlertManager: No frame found in buffer for camera %d. Buffer keys: %s",
+                               camera_id, list(self._frame_buffer._slots.keys()))
             
             await db.commit()
             logger.info("Event %d persisted — behavior=%s camera=%d snapshot=%s", event_id, behavior, camera_id, snapshot_path)

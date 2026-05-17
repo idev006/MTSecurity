@@ -36,6 +36,13 @@ class EventFilter(BaseModel):
     page_size: int = Field(50, ge=1, le=200)
 
 
+class EventPage(BaseModel):
+    items: list[EventRead]
+    total: int
+    page: int
+    page_size: int
+
+
 class AlertAckRequest(BaseModel):
     note: str | None = None
 

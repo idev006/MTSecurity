@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from api.deps import CurrentUser, DBDep, require
 from models.alert_note import AlertNote
@@ -18,6 +18,7 @@ from schemas.event import (
     AlertNoteCreate,
     AlertSilenceRequest,
     EventFilter,
+    EventPage,
     EventRead,
 )
 
@@ -40,35 +41,43 @@ def _to_read(event: Event, base_url: str) -> dict:
 
 # ── List / filter ─────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[EventRead], dependencies=[require("events:read")])
-async def list_events(request: Request, db: DBDep, user: CurrentUser, f: EventFilter = Depends()) -> list[dict]:
+@router.get("", response_model=EventPage, dependencies=[require("events:read")])
+async def list_events(request: Request, db: DBDep, user: CurrentUser, f: EventFilter = Depends()) -> dict:
     base_url: str = request.app.state.cfg.base_url
 
-    query = select(Event).order_by(Event.occurred_at.desc())
+    base_query = select(Event)
 
     # Scope filter
     allowed = user.camera_ids()
     if allowed is not None:
-        query = query.where(Event.camera_id.in_(allowed))
+        base_query = base_query.where(Event.camera_id.in_(allowed))
 
     if f.camera_id is not None:
-        query = query.where(Event.camera_id == f.camera_id)
+        base_query = base_query.where(Event.camera_id == f.camera_id)
     if f.behavior is not None:
-        query = query.where(Event.behavior == f.behavior)
+        base_query = base_query.where(Event.behavior == f.behavior)
     if f.severity is not None:
-        query = query.where(Event.severity == f.severity)
+        base_query = base_query.where(Event.severity == f.severity)
     if f.status is not None:
-        query = query.where(Event.status == f.status)
+        base_query = base_query.where(Event.status == f.status)
     if f.from_dt is not None:
-        query = query.where(Event.occurred_at >= f.from_dt)
+        base_query = base_query.where(Event.occurred_at >= f.from_dt)
     if f.to_dt is not None:
-        query = query.where(Event.occurred_at <= f.to_dt)
+        base_query = base_query.where(Event.occurred_at <= f.to_dt)
+
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total: int = (await db.execute(count_query)).scalar_one()
 
     offset = (f.page - 1) * f.page_size
-    query = query.offset(offset).limit(f.page_size)
+    rows_query = base_query.order_by(Event.occurred_at.desc()).offset(offset).limit(f.page_size)
+    result = await db.execute(rows_query)
 
-    result = await db.execute(query)
-    return [_to_read(e, base_url) for e in result.scalars().all()]
+    return {
+        "items": [_to_read(e, base_url) for e in result.scalars().all()],
+        "total": total,
+        "page": f.page,
+        "page_size": f.page_size,
+    }
 
 
 @router.get("/{event_id}", response_model=EventRead, dependencies=[require("events:read")])

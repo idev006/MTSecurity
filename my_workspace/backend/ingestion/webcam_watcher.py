@@ -68,24 +68,47 @@ class WebcamWatcher(threading.Thread):
 
     def _tick(self) -> None:
         """One poll cycle — enumerate devices, match cameras, restart if needed."""
-        available = enumerate_webcams()
-        available_by_name: dict[str, EnumeratedDevice] = {d.device_name: d for d in available}
-        available_indices: set[int] = {d.index for d in available}
-
-        # Fetch active webcam cameras from ConfigService (run coroutine from thread)
+        # Fetch camera list first so we can skip the expensive device probe
+        # when every webcam is already healthy.  enumerate_webcams() opens
+        # cv2.VideoCapture(0..9) in parallel threads via DirectShow — probing
+        # devices that are already streaming causes COM collisions on Windows
+        # and can crash the active capture, so we avoid it unless necessary.
         cameras = self._run(self._config.get_active_cameras())
         webcams = [c for c in cameras if getattr(c, "source_type", None) == "webcam"]
+
+        needs_recovery = any(
+            self._state.get_camera_state(cam.id).state in _RECOVERABLE
+            for cam in webcams
+        )
+        if not needs_recovery:
+            return  # all webcams healthy — skip DirectShow probe entirely
+
+        # At least one camera needs recovery: probe available devices,
+        # but exclude indices that are currently streaming (ONLINE / CONNECTING).
+        active_indices: set[int] = {
+            cam.device_index
+            for cam in webcams
+            if cam.device_index is not None
+            and self._state.get_camera_state(cam.id).state not in _RECOVERABLE
+        }
+        available = enumerate_webcams(skip_indices=active_indices)
+        available_by_name: dict[str, EnumeratedDevice] = {d.device_name: d for d in available}
+        available_indices: set[int] = {d.index for d in available}
 
         for cam in webcams:
             cam_state = self._state.get_camera_state(cam.id).state
 
             # ── Check for disappearing devices (informational only) ───────────
-            if cam.device_index is not None and cam.device_index not in available_indices:
-                if cam_state not in _RECOVERABLE:
-                    logger.warning(
-                        "Camera %d (%s): device index %d no longer available",
-                        cam.id, cam.name, cam.device_index,
-                    )
+            if (
+                cam.device_index is not None
+                and cam.device_index not in available_indices
+                and cam.device_index not in active_indices
+                and cam_state not in _RECOVERABLE
+            ):
+                logger.warning(
+                    "Camera %d (%s): device index %d no longer available",
+                    cam.id, cam.name, cam.device_index,
+                )
 
             # ── Try to recover cameras in a failed/error/inactive state ───────
             if cam_state not in _RECOVERABLE:

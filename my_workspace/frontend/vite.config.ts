@@ -16,6 +16,13 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       proxy: {
+        // MJPEG streams are long-lived — no timeout, no buffering
+        '/api/v1/cameras': {
+          target: backendUrl,
+          changeOrigin: true,
+          proxyTimeout: 0,    // never time out camera streams
+          timeout: 0,
+        },
         '/api': {
           target: backendUrl,
           changeOrigin: true,

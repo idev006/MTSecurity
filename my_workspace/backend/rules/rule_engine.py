@@ -85,8 +85,7 @@ class RuleEngine:
                 if inside:
                     zone_counts[zone_id] = zone_counts.get(zone_id, 0) + 1
                 
-                # Use INFO so it shows up without DEBUG=true
-                logger.info("Track %d centroid=(%.3f, %.3f) zone=%d inside=%s", 
+                logger.debug("Track %d centroid=(%.3f, %.3f) zone=%d inside=%s",
                              det.get("track_id"), cx, cy, zone_id, inside)
 
         for det in detections:
@@ -96,6 +95,8 @@ class RuleEngine:
 
             for rule_id, rule_cfg in self._rules.items():
                 if rule_cfg.get("camera_id") != camera_id:
+                    continue
+                if not rule_cfg.get("zone_is_active", True):
                     continue
                 if not rule_cfg.get("is_active", True):
                     continue
@@ -129,16 +130,23 @@ class RuleEngine:
                         logger.info("Rule %d evaluation: SUPPRESSED (cooldown)", rule_id)
                         continue
                     self._set_cooldown(rule_id, track.track_id)
-                    
-                    # For emit, we still need a 'result' object for compatibility
+
+                    # When Advanced Logic is used, rule.behavior may not match
+                    # the behavior node inside the logic tree (common when the user
+                    # didn't update the top-level behavior field after editing the
+                    # logic tree).  Extract the actual behavior type from the tree
+                    # so the alert reflects what really fired.
+                    behavior_override = _extract_behavior_from_tree(
+                        logic_tree, rule_cfg.get("behavior", "")
+                    )
+
                     from rules.behaviors.base import TriggerResult
-                    # Pass the label and bbox in metadata for the snapshot annotator
-                    meta = {
-                        "label": track.label,
-                        "bbox": track.bbox
-                    }
+                    meta = {"label": track.label, "bbox": track.bbox}
                     result = TriggerResult(triggered=True, confidence=track.confidence, metadata=meta)
-                    await self._emit_triggered(rule_id, rule_cfg, camera_id, rule_cfg["zone_id"], track, result)
+                    await self._emit_triggered(
+                        rule_id, rule_cfg, camera_id, rule_cfg["zone_id"],
+                        track, result, behavior_override=behavior_override,
+                    )
                 else:
                     # Optional: log why it failed
                     pass
@@ -150,7 +158,7 @@ class RuleEngine:
         if scope == "rule":
             rule = await self._config.get_rule(entity_id)
             if rule:
-                self._cache_rule(rule)
+                await self._cache_rule(rule)
             else:
                 self._rules.pop(entity_id, None)
 
@@ -158,13 +166,30 @@ class RuleEngine:
             zone = await self._config.get_zone(entity_id)
             if zone:
                 self._zone_mgr.update_zone(zone.id, zone.coordinates)
-                self._schedule_mgr.update(entity_id, None)
+                for rule_cfg in self._rules.values():
+                    if rule_cfg["zone_id"] == entity_id:
+                        rule_cfg["zone_is_active"] = zone.is_active
+            else:
+                # Zone deleted — remove all rules that belonged to it
+                dead = [rid for rid, r in self._rules.items() if r["zone_id"] == entity_id]
+                for rid in dead:
+                    self._rules.pop(rid, None)
+
+        elif scope == "camera":
+            # Camera deleted — remove all rules whose camera_id matches
+            dead = [rid for rid, r in self._rules.items() if r.get("camera_id") == entity_id]
+            for rid in dead:
+                self._rules.pop(rid, None)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     async def _cache_rule(self, rule) -> None:
         zone = await self._config.get_zone(rule.zone_id)
-        camera_id = zone.camera_id if zone else None
+        if zone is None:
+            logger.warning("RuleEngine: zone %d not found for rule %d — skipping", rule.zone_id, rule.id)
+            self._rules.pop(rule.id, None)
+            return
+        camera_id = zone.camera_id
 
         self._rules[rule.id] = {
             "rule_id": rule.id,
@@ -172,15 +197,16 @@ class RuleEngine:
             "camera_id": camera_id,
             "behavior": rule.behavior,
             "is_active": rule.is_active,
+            "zone_is_active": zone.is_active,
             "confidence_threshold": rule.confidence_threshold,
             "dwell_threshold_seconds": rule.dwell_threshold_seconds,
             "cooldown_seconds": rule.cooldown_seconds,
             "severity": rule.severity,
             "name": rule.name,
             "logic": json.loads(rule.logic) if rule.logic else None,
+            "behavior_params": json.loads(rule.behavior_params) if rule.behavior_params else {},
         }
-        if zone:
-            self._zone_mgr.update_zone(zone.id, zone.coordinates)
+        self._zone_mgr.update_zone(zone.id, zone.coordinates)
         self._schedule_mgr.update(rule.id, rule.schedule)
 
     def _get_camera_id_for_zone(self, zone_id: int) -> int | None:
@@ -199,15 +225,20 @@ class RuleEngine:
     def _set_cooldown(self, rule_id: int, track_id: int) -> None:
         self._last_trigger[(rule_id, track_id)] = time.monotonic()
 
-    async def _emit_triggered(self, rule_id, rule_cfg, camera_id, zone_id, track, result) -> None:
+    async def _emit_triggered(
+        self, rule_id, rule_cfg, camera_id, zone_id, track, result,
+        behavior_override: str | None = None,
+    ) -> None:
+        behavior = behavior_override or rule_cfg.get("behavior", "")
         payload = RuleTriggeredPayload(
             rule_id=rule_id,
             rule_name=rule_cfg.get("name", ""),
             camera_id=camera_id,
             zone_id=zone_id,
             track_id=track.track_id,
-            behavior=rule_cfg.get("behavior", ""),
+            behavior=behavior,
             confidence=result.confidence,
+            severity=rule_cfg.get("severity", "medium"),
             snapshot_path=None,
             metadata=result.metadata,
         )
@@ -220,11 +251,32 @@ class RuleEngine:
         await self._bus.publish(msg)
         logger.info(
             "Rule %d triggered — behavior=%s camera=%d track=%d confidence=%.2f",
-            rule_id, rule_cfg.get("behavior"), camera_id, track.track_id, result.confidence,
+            rule_id, behavior, camera_id, track.track_id, result.confidence,
         )
 
     def update_zone_cache(self, zone_id: int, coords_json: str) -> None:
         self._zone_mgr.update_zone(zone_id, coords_json)
+
+
+def _extract_behavior_from_tree(node: dict | None, fallback: str) -> str:
+    """Walk a logic tree and return the first behavior node's type.
+
+    When Advanced Logic is used, the top-level ``rule.behavior`` field may not
+    reflect the actual behavior configured in the tree (common when the form
+    defaulted to 'intrusion' before the user switched to the logic builder).
+    This helper extracts the real type so alerts report correctly.
+    """
+    if not node:
+        return fallback
+    # Leaf node — behavior condition
+    if node.get("type") == "behavior":
+        return node.get("params", {}).get("type", fallback)
+    # Operator node — recurse into children
+    for child in node.get("conditions", []):
+        found = _extract_behavior_from_tree(child, fallback)
+        if found != fallback:
+            return found
+    return fallback
 
 
 class _TrackProxy:

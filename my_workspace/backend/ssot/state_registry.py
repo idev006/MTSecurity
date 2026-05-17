@@ -19,9 +19,9 @@ class CameraState:
 
     VALID_TRANSITIONS: dict[str, list[str]] = {
         INACTIVE:     [CONNECTING],
-        CONNECTING:   [ONLINE, ERROR, FAILED],
+        CONNECTING:   [ONLINE, ERROR, FAILED, INACTIVE],   # INACTIVE: stopped before connect
         ONLINE:       [RECONNECTING, INACTIVE],
-        RECONNECTING: [ONLINE, ERROR, FAILED],
+        RECONNECTING: [ONLINE, ERROR, FAILED, INACTIVE],   # INACTIVE: stopped mid-reconnect
         ERROR:        [RECONNECTING, FAILED, INACTIVE],
         FAILED:       [INACTIVE],
     }
@@ -79,6 +79,14 @@ class StateRegistry:
                 if hasattr(cam, k):
                     setattr(cam, k, v)
             return True
+
+    def update_camera_meta(self, camera_id: int, **kwargs: Any) -> None:
+        """Update camera metadata (e.g. error_msg, reconnect_attempts) without a state transition."""
+        with self._lock:
+            cam = self._cameras.setdefault(camera_id, CameraRuntimeState())
+            for k, v in kwargs.items():
+                if hasattr(cam, k):
+                    setattr(cam, k, v)
 
     def all_camera_states(self) -> dict[int, CameraRuntimeState]:
         with self._lock:

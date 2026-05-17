@@ -14,7 +14,8 @@ export const useEventsStore = defineStore('events', () => {
     loading.value = true
     error.value = null
     try {
-      events.value = await eventsApi.list(params ?? { page_size: 50 })
+      const page = await eventsApi.list(params ?? { page_size: 50 })
+      events.value = page.items
     } catch (e: any) {
       error.value = e.message
     } finally {
