@@ -409,7 +409,9 @@ EventsView → <video> player modal
 | `frontend/src/stores/toast.ts` | BUG-014 |
 | `frontend/src/api/client.ts` | FEAT-001, FEAT-004, FEAT-005, FEAT-006 |
 | `frontend/src/router/index.ts` | BUG-013, FEAT-001 |
-| `frontend/src/components/AppLayout.vue` | FEAT-001 |
+| `backend/models/system_setting.py` | FEAT-007 (NEW) |
+| `backend/api/routers/system.py` | FEAT-007 (NEW) |
+| `frontend/src/components/AppLayout.vue` | FEAT-001, FEAT-008 |
 
 ---
 
@@ -671,6 +673,85 @@ Rule.enable/disable  (leaf — ไม่มี cascade)
 - `frontend/src/api/client.ts`
 - `frontend/src/stores/zones.ts`
 - `frontend/src/views/ZonesView.vue`
+
+---
+
+### BUG-016 — Logout ไม่ blacklist refresh token (partial logout)
+
+**Severity:** High  
+**Component:** Backend — Auth Router
+
+**อาการ:**  
+หลัง logout access token ถูก revoke แต่ refresh token (อายุ 7 วัน) ยังใช้ได้อยู่ ผู้ที่ได้ refresh token ไปสามารถขอ access token ใหม่ได้ต่อเนื่องแม้ user จะ logout แล้ว
+
+**สาเหตุ:**  
+`POST /auth/logout` blacklist เฉพาะ access token jti เท่านั้น ไม่ได้รับ refresh_token จาก client และไม่ได้ blacklist มัน
+
+**วิธีแก้:**  
+- Backend: `logout` endpoint รับ `refresh_token` optional ใน request body ถ้ามีให้ decode + blacklist jti ของมันด้วย
+- Frontend: `auth.ts` ส่ง `localStorage.getItem('refresh_token')` ใน body ของ logout request
+
+```python
+# auth.py — logout ใหม่
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
+
+@router.post("/logout")
+async def logout(body: LogoutRequest, user: CurrentUser, ...):
+    # blacklist access token (from Authorization header)
+    ...
+    # blacklist refresh token (from body)
+    if body.refresh_token:
+        rp = decode_token(body.refresh_token, ...)
+        if rp.get("type") == "refresh":
+            await blacklist_token(rp["jti"], rexp, db)
+```
+
+**ไฟล์ที่แก้:**
+- `backend/api/routers/auth.py` — `LogoutRequest`, `logout()` endpoint
+- `frontend/src/stores/auth.ts` — ส่ง refresh_token ใน logout call
+- `frontend/src/api/client.ts` — `authApi.logout(refresh_token?)`
+
+---
+
+### FEAT-007 — Admin กำหนด Token Expiry ได้ผ่าน UI
+
+**Component:** Backend + Frontend — System Settings
+
+**เพิ่ม:**
+
+ผู้ดูแลระบบ (ADMIN/SUPERADMIN) สามารถกำหนดอายุ token ได้ผ่าน Settings → ระบบ โดยไม่ต้อง restart server
+
+**ค่าที่กำหนดได้:**
+| Setting | ช่วงที่ยอมรับ | Default |
+|---|---|---|
+| Access token expiry | 5 นาที – 8 ชั่วโมง | 60 นาที |
+| Refresh token expiry | 1 – 90 วัน | 7 วัน |
+
+การเปลี่ยนแปลงมีผลกับ **token ที่ออกใหม่เท่านั้น** (login/refresh ครั้งถัดไป) — token ที่มีอยู่แล้วไม่ได้รับผลกระทบ
+
+**Backend:**
+- `models/system_setting.py` (NEW) — key-value table สำหรับ runtime settings (`key`, `value`, `updated_by`, `updated_at`)
+- `auth/permissions.py` — เพิ่ม `"system:read"` และ `"system:write"` สำหรับ ADMIN+
+- `api/routers/system.py` (NEW) — `GET /system/settings`, `PATCH /system/settings` พร้อม validation (type + range)
+- `api/routers/auth.py` — `login()` และ `refresh()` เรียก `_get_setting_int()` เพื่ออ่านค่าจาก DB ก่อน fallback ไป `.env`
+- `api/app.py` — register system router
+
+**Frontend:**
+- `api/client.ts` — เพิ่ม `SystemSetting` interface + `systemApi.getSettings()`, `systemApi.updateSetting()`
+- `views/SettingsView.vue` — Card "การตั้งค่า Token" ใน tab ระบบ (ซ่อนถ้าไม่ใช่ ADMIN+) พร้อม dropdown + save button
+
+---
+
+### FEAT-008 — Signout Confirm Dialog
+
+**Component:** Frontend — AppLayout
+
+**เพิ่ม:**  
+ปุ่ม Logout ใน user menu เปิด DaisyUI modal ยืนยันก่อนออกจากระบบแทนที่จะ logout ทันที modal แสดง username ของ session ปัจจุบัน พร้อมปุ่ม "ออกจากระบบ" (error) และ "ยกเลิก"
+
+**ไฟล์ที่แก้:**
+- `frontend/src/components/AppLayout.vue` — เพิ่ม `<dialog>` modal + `logoutModal` ref + `handleLogout()` เปลี่ยนเป็นแค่ `showModal()` + `confirmLogout()` รัน logout จริง
 
 ---
 
