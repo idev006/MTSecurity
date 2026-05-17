@@ -63,13 +63,19 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && !token) return { name: 'login' }
   if (to.name === 'login' && token)   return { name: 'dashboard' }
 
-  // Role guard: redirect to dashboard if role not allowed
-  const allowedRoles = to.meta.roles as string[] | undefined
-  if (allowedRoles && token) {
+  // Hydrate auth.user whenever token exists but user is not in memory.
+  // This covers page-refresh: token survives in localStorage but the
+  // in-memory user ref resets to null, causing role-dependent UI to break.
+  if (token && to.meta.requiresAuth) {
     const { useAuthStore } = await import('@/stores/auth')
     const auth = useAuthStore()
     if (!auth.user) await auth.fetchMe()
-    if (!allowedRoles.includes(auth.role)) return { name: 'dashboard' }
+
+    // Role guard: redirect to dashboard if role not allowed
+    const allowedRoles = to.meta.roles as string[] | undefined
+    if (allowedRoles && !allowedRoles.includes(auth.role)) {
+      return { name: 'dashboard' }
+    }
   }
 })
 
