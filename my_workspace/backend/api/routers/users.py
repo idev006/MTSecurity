@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from api.deps import CurrentUser, DBDep, require
-from auth.password import hash_password
+from auth.password import hash_password, verify_password, validate_policy
 from models.user import User
 from schemas.user import UserCreate, UserRead, UserUpdate
 
@@ -76,3 +77,29 @@ async def delete_user(user_id: int, db: DBDep, user: CurrentUser) -> None:
     await db.delete(u)
     await db.commit()
     logger.info("User %d deleted by %s", user_id, user.username)
+
+
+# ── Self-service password change ──────────────────────────────────────────────
+
+class ChangePasswordBody(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+
+@router.post("/me/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_own_password(
+    body: ChangePasswordBody,
+    db: DBDep,
+    user: CurrentUser,
+) -> None:
+    """Any authenticated user may change their own password."""
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Current password is incorrect")
+
+    violations = validate_policy(body.new_password)
+    if violations:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "; ".join(violations))
+
+    user.hashed_password = hash_password(body.new_password)
+    await db.commit()
+    logger.info("User %d (%s) changed their password", user.id, user.username)

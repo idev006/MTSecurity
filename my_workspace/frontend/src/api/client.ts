@@ -199,6 +199,32 @@ export const lprApi = {
   delete: (id: number) => del(`/lpr/${id}`),
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+
+export interface UserCreate {
+  username: string
+  password: string
+  role: string
+  display_name?: string | null
+  camera_scope?: string | null
+}
+
+export interface UserUpdate {
+  display_name?: string | null
+  is_active?: boolean
+  camera_scope?: string | null
+}
+
+export const usersApi = {
+  list:   ()                            => get<UserRead[]>('/users'),
+  get:    (id: number)                  => get<UserRead>(`/users/${id}`),
+  create: (body: UserCreate)            => post<UserRead>('/users', body),
+  update: (id: number, body: UserUpdate) => patch<UserRead>(`/users/${id}`, body),
+  delete: (id: number)                  => del(`/users/${id}`),
+  changePassword: (current_password: string, new_password: string) =>
+    post<void>('/users/me/change-password', { current_password, new_password }),
+}
+
 // ── Rules ─────────────────────────────────────────────────────────────────────
 export interface RuleRead {
   id: number

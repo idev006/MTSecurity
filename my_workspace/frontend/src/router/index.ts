@@ -45,6 +45,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ZonesView.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/users',
+    name: 'users',
+    component: () => import('@/views/UsersView.vue'),
+    meta: { requiresAuth: true, roles: ['SUPERADMIN', 'ADMIN'] },
+  },
 ]
 
 const router = createRouter({
@@ -56,6 +62,15 @@ router.beforeEach(async (to) => {
   const token = localStorage.getItem('access_token')
   if (to.meta.requiresAuth && !token) return { name: 'login' }
   if (to.name === 'login' && token)   return { name: 'dashboard' }
+
+  // Role guard: redirect to dashboard if role not allowed
+  const allowedRoles = to.meta.roles as string[] | undefined
+  if (allowedRoles && token) {
+    const { useAuthStore } = await import('@/stores/auth')
+    const auth = useAuthStore()
+    if (!auth.user) await auth.fetchMe()
+    if (!allowedRoles.includes(auth.role)) return { name: 'dashboard' }
+  }
 })
 
 export default router

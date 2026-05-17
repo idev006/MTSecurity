@@ -225,12 +225,74 @@
           </div>
         </div>
 
-        <div class="alert text-xs font-mono">
+        <!-- Change password card -->
+        <div class="card bg-base-100 border border-base-300 shadow-none">
+          <div class="card-body p-0">
+            <div class="px-4 py-2 border-b border-base-300">
+              <h3 class="font-mono text-xs font-semibold opacity-60">เปลี่ยนรหัสผ่าน</h3>
+            </div>
+            <div class="px-4 py-4 flex flex-col gap-3 max-w-sm">
+              <label class="form-control w-full">
+                <div class="label py-0.5">
+                  <span class="label-text font-mono text-xs">รหัสผ่านปัจจุบัน</span>
+                </div>
+                <input v-model="pwForm.current" type="password"
+                  class="input input-bordered input-sm font-mono"
+                  :class="pwErrors.current ? 'input-error' : ''"
+                  placeholder="รหัสผ่านปัจจุบัน" />
+                <div v-if="pwErrors.current" class="label py-0.5">
+                  <span class="label-text-alt text-error font-mono text-xs">{{ pwErrors.current }}</span>
+                </div>
+              </label>
+
+              <label class="form-control w-full">
+                <div class="label py-0.5">
+                  <span class="label-text font-mono text-xs">รหัสผ่านใหม่</span>
+                </div>
+                <input v-model="pwForm.newPw" type="password"
+                  class="input input-bordered input-sm font-mono"
+                  :class="pwErrors.newPw ? 'input-error' : ''"
+                  placeholder="อย่างน้อย 8 ตัว" />
+                <div v-if="pwErrors.newPw" class="label py-0.5">
+                  <span class="label-text-alt text-error font-mono text-xs">{{ pwErrors.newPw }}</span>
+                </div>
+              </label>
+
+              <label class="form-control w-full">
+                <div class="label py-0.5">
+                  <span class="label-text font-mono text-xs">ยืนยันรหัสผ่านใหม่</span>
+                </div>
+                <input v-model="pwForm.confirm" type="password"
+                  class="input input-bordered input-sm font-mono"
+                  :class="pwErrors.confirm ? 'input-error' : ''"
+                  placeholder="พิมพ์รหัสผ่านใหม่อีกครั้ง" />
+                <div v-if="pwErrors.confirm" class="label py-0.5">
+                  <span class="label-text-alt text-error font-mono text-xs">{{ pwErrors.confirm }}</span>
+                </div>
+              </label>
+
+              <div v-if="pwError" class="alert alert-error py-2 text-xs font-mono">{{ pwError }}</div>
+              <div v-if="pwSuccess" class="alert alert-success py-2 text-xs font-mono">{{ pwSuccess }}</div>
+
+              <button class="btn btn-sm btn-primary font-mono self-start"
+                :class="pwSaving ? 'loading' : ''"
+                :disabled="pwSaving"
+                @click="handleChangePassword">
+                บันทึกรหัสผ่าน
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Users link for admin roles -->
+        <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
+          class="alert text-xs font-mono">
           <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
-          การเปลี่ยนรหัสผ่านและการจัดการผู้ใช้สำหรับ SUPERADMIN ทำได้ผ่าน API
+          <span>จัดการผู้ใช้งานทั้งหมดได้ที่</span>
+          <RouterLink to="/users" class="link link-primary font-bold">หน้า Users</RouterLink>
         </div>
       </template>
 
@@ -240,11 +302,12 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, RouterLink } from 'vue-router'
 import AppLayout from '@/components/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSystemStore } from '@/stores/system'
 import { useThemeStore, ALL_THEMES } from '@/stores/theme'
+import { usersApi } from '@/api/client'
 
 const auth       = useAuthStore()
 const system     = useSystemStore()
@@ -305,5 +368,35 @@ function progressClass(pct: number) {
 }
 function fmtTime(d: Date) {
   return d.toLocaleTimeString()
+}
+
+// ── Change password ───────────────────────────────────────────────────────
+const pwForm    = ref({ current: '', newPw: '', confirm: '' })
+const pwErrors  = ref<Record<string, string>>({})
+const pwError   = ref('')
+const pwSuccess = ref('')
+const pwSaving  = ref(false)
+
+async function handleChangePassword() {
+  pwErrors.value  = {}
+  pwError.value   = ''
+  pwSuccess.value = ''
+
+  const errs: Record<string, string> = {}
+  if (!pwForm.value.current) errs.current = 'กรุณาใส่รหัสผ่านปัจจุบัน'
+  if (pwForm.value.newPw.length < 8) errs.newPw = 'รหัสผ่านใหม่ต้องมีอย่างน้อย 8 ตัวอักษร'
+  if (pwForm.value.newPw !== pwForm.value.confirm) errs.confirm = 'รหัสผ่านไม่ตรงกัน'
+  if (Object.keys(errs).length) { pwErrors.value = errs; return }
+
+  pwSaving.value = true
+  try {
+    await usersApi.changePassword(pwForm.value.current, pwForm.value.newPw)
+    pwSuccess.value = 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว'
+    pwForm.value = { current: '', newPw: '', confirm: '' }
+  } catch (e: any) {
+    pwError.value = e?.message ?? 'เปลี่ยนรหัสผ่านไม่สำเร็จ'
+  } finally {
+    pwSaving.value = false
+  }
 }
 </script>
