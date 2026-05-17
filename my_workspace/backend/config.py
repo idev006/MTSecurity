@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     max_snapshot_age_days: int = 30
     disk_alert_threshold_gb: float = 20.0
 
+    # ── FFmpeg ────────────────────────────────────────────────────────────────
+    # Absolute path to the ffmpeg executable.
+    # Leave empty ("") to search PATH automatically.
+    ffmpeg_path: str = ""
+    # Output resolution for saved clips.
+    # clip_height=480, clip_width=854 → 854×480 (16:9 landscape, YouTube-friendly).
+    # Set both to 0 to keep the original camera resolution.
+    clip_height: int = 480
+    clip_width: int = 854
+
     # ── URLs ─────────────────────────────────────────────────────────────────
     # Public-facing base URL — used for building snapshot/clip links in alerts
     base_url: str = "http://localhost:8000"

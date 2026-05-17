@@ -44,6 +44,9 @@ class AlertManager:
         snapshot_dir: "Path",
         clip_buffer: "ClipBuffer | None" = None,
         clip_dir: "Path | None" = None,
+        ffmpeg_path: str = "",
+        clip_width: int = 0,
+        clip_height: int = 0,
     ) -> None:
         self._dispatcher = dispatcher
         self._config = config_svc
@@ -54,6 +57,9 @@ class AlertManager:
         self._snapshot_dir = snapshot_dir
         self._clip_buffer = clip_buffer
         self._clip_dir = clip_dir
+        self._ffmpeg_path = ffmpeg_path
+        self._clip_width = clip_width
+        self._clip_height = clip_height
 
     def register(self, bus: "MessageBus") -> None:
         bus.subscribe(MTPMsgType.RULE_TRIGGERED, self._on_rule_triggered)
@@ -143,7 +149,10 @@ class AlertManager:
                     clip_path = await asyncio.get_event_loop().run_in_executor(
                         None,
                         lambda: self._clip_buffer.save_clip(
-                            camera_id, event_id, self._clip_dir
+                            camera_id, event_id, self._clip_dir,
+                            ffmpeg_path=self._ffmpeg_path,
+                            out_width=self._clip_width,
+                            out_height=self._clip_height,
                         ),
                     )
                     if clip_path:

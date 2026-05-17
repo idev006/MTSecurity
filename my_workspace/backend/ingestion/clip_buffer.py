@@ -22,51 +22,83 @@ _DEFAULT_MAX_FRAMES = 150
 _DEFAULT_FPS = 15.0
 
 
-def _apply_faststart(src: Path) -> Path:
+def _resolve_ffmpeg(ffmpeg_path: str = "") -> str | None:
     """
-    Re-mux an MP4 with ``-movflags +faststart`` so the moov atom sits at the
-    beginning of the file.  Browsers require this to show correct duration.
+    Return the path to the ffmpeg executable.
 
-    If FFmpeg is not installed the original file is returned unchanged (the
-    video will still play in most browsers but may show 0:00 duration until
-    fully downloaded).
+    Priority:
+      1. ``ffmpeg_path`` setting (if non-empty and the file exists)
+      2. ``ffmpeg`` / ``ffmpeg.exe`` found anywhere on PATH
+      3. ``None`` → caller should warn and skip ffmpeg processing
     """
-    if not shutil.which("ffmpeg"):
+    if ffmpeg_path:
+        p = Path(ffmpeg_path)
+        if p.is_file():
+            return str(p)
         logger.warning(
-            "ffmpeg not found — clip moov atom is at end-of-file; "
-            "browser may show 0:00 duration.  Install ffmpeg to fix this."
+            "ClipBuffer: configured FFMPEG_PATH '%s' not found — falling back to PATH", ffmpeg_path
         )
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    logger.warning(
+        "ffmpeg not found (PATH and configured FFMPEG_PATH).  "
+        "Clips will have moov-at-end; browser may show 0:00 duration."
+    )
+    return None
+
+
+def _apply_faststart(
+    src: Path,
+    ffmpeg_exe: str | None,
+    out_width: int = 0,
+    out_height: int = 0,
+) -> Path:
+    """
+    Re-encode / remux the clip via FFmpeg:
+      - Scale to ``out_width × out_height`` (keeps AR when both > 0).
+        Pass 0/0 to skip scaling.
+      - Apply ``-movflags +faststart`` so the moov atom is at the front.
+
+    If FFmpeg is unavailable the original file is returned unchanged.
+    """
+    if ffmpeg_exe is None:
         return src
 
     tmp = src.with_suffix(".tmp.mp4")
-    try:
-        result = subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-i", str(src),
-                "-c", "copy",
-                "-movflags", "+faststart",
-                str(tmp),
-            ],
-            capture_output=True,
-            timeout=60,
+
+    # Build video filter: scale only if dimensions requested
+    vf_parts: list[str] = []
+    if out_width > 0 and out_height > 0:
+        # force_original_aspect_ratio=decrease → letterbox to fit exactly
+        vf_parts.append(
+            f"scale={out_width}:{out_height}:force_original_aspect_ratio=decrease,"
+            f"pad={out_width}:{out_height}:(ow-iw)/2:(oh-ih)/2"
         )
+
+    cmd = [ffmpeg_exe, "-y", "-i", str(src)]
+    if vf_parts:
+        cmd += ["-vf", "".join(vf_parts), "-c:v", "libx264", "-crf", "23", "-preset", "fast"]
+    else:
+        cmd += ["-c", "copy"]
+    cmd += ["-movflags", "+faststart", str(tmp)]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
         if result.returncode == 0:
             src.unlink()
             tmp.rename(src)
-            logger.debug("ClipBuffer: faststart applied → %s", src)
+            logger.debug("ClipBuffer: ffmpeg OK → %s", src)
         else:
             logger.warning(
-                "ClipBuffer: ffmpeg faststart failed (rc=%d): %s",
+                "ClipBuffer: ffmpeg failed (rc=%d): %s",
                 result.returncode,
-                result.stderr.decode(errors="replace")[-500:],
+                result.stderr.decode(errors="replace")[-600:],
             )
-            if tmp.exists():
-                tmp.unlink(missing_ok=True)
-    except Exception as exc:
-        logger.warning("ClipBuffer: faststart error — %s", exc)
-        if tmp.exists():
             tmp.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning("ClipBuffer: ffmpeg error — %s", exc)
+        tmp.unlink(missing_ok=True)
 
     return src
 
@@ -116,9 +148,14 @@ class ClipBuffer:
         event_id: int,
         clip_dir: Path,
         fps: float = _DEFAULT_FPS,
+        ffmpeg_path: str = "",
+        out_width: int = 0,
+        out_height: int = 0,
     ) -> Path | None:
         """
-        Write buffered frames to an MP4 file.
+        Write buffered frames to an MP4 file, then run FFmpeg post-processing:
+          - scale to ``out_width × out_height`` (0/0 = keep original)
+          - apply faststart so browsers can determine clip duration
 
         Returns the Path on success, None if the buffer is empty or encoding fails.
         The file is named ``clip_<camera_id>_<event_id>.mp4``.
@@ -163,10 +200,11 @@ class ClipBuffer:
                 "ClipBuffer: saved %d-frame clip → %s", len(frames), out_path
             )
 
-            # ── FFmpeg faststart: move moov atom to front ─────────────────────
-            # cv2/mp4v writes moov at end-of-file; browsers need it at the
-            # beginning to determine duration.  Re-mux in-place if ffmpeg exists.
-            out_path = _apply_faststart(out_path)
+            # ── FFmpeg: scale to target resolution + faststart ────────────────
+            # cv2/mp4v writes moov at end-of-file; ffmpeg re-encodes/remuxes
+            # to move moov to front AND resize to the configured output size.
+            ffmpeg_exe = _resolve_ffmpeg(ffmpeg_path)
+            out_path = _apply_faststart(out_path, ffmpeg_exe, out_width, out_height)
 
             return out_path
 

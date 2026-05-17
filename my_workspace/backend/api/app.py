@@ -125,6 +125,9 @@ async def _lifespan(app: FastAPI):
         snapshot_dir=cfg.snapshot_dir,
         clip_buffer=clip_buffer,
         clip_dir=cfg.clip_dir,
+        ffmpeg_path=cfg.ffmpeg_path,
+        clip_width=cfg.clip_width,
+        clip_height=cfg.clip_height,
     )
     alert_manager.register(bus)
 
