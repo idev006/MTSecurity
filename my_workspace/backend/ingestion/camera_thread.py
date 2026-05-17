@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 
+from ingestion.clip_buffer import ClipBuffer
 from ingestion.frame_buffer import Frame, FrameBuffer
 from ingestion.frame_codec import ResolutionTier, encode_frame
 from protocol.mtp import MTPMessage, MTPMsgType, MTPPriority
@@ -56,10 +57,12 @@ class CameraThread(threading.Thread):
         rtsp_url: str | None = None,
         device_index: int | None = None,
         target_fps: float = 15.0,
+        clip_buffer: ClipBuffer | None = None,
     ) -> None:
         super().__init__(name=f"cam-{camera_id}", daemon=True)
         self.camera_id = camera_id
         self._buffer = buffer
+        self._clip_buffer = clip_buffer
         self._state = state_reg
         self._bus = bus
         self._source_type = source_type
@@ -158,6 +161,8 @@ class CameraThread(threading.Thread):
             h, w = frame.shape[:2]
             f = Frame(camera_id=self.camera_id, data=jpeg, width=w, height=h)
             self._buffer.put(f)
+            if self._clip_buffer is not None:
+                self._clip_buffer.put(f)
 
             # Compute rolling FPS via exponential moving average
             now = time.monotonic()

@@ -25,6 +25,7 @@ async def _lifespan(app: FastAPI):
     from db.pragmas import apply_pragmas
     from db.session import get_session_factory, init_engine
     from ingestion.camera_manager import CameraManager
+    from ingestion.clip_buffer import ClipBuffer
     from ingestion.frame_buffer import FrameBuffer
     from ingestion.webcam_watcher import WebcamWatcher
     from alerts.alert_manager import AlertManager
@@ -74,12 +75,14 @@ async def _lifespan(app: FastAPI):
 
     # ── 4. Ingestion Layer ───────────────────────────────────────────────────
     frame_buffer = FrameBuffer()
+    clip_buffer = ClipBuffer(max_frames=150)   # ~10 s @ 15 fps
     cam_manager = CameraManager(
         buffer=frame_buffer,
         config_svc=config_svc,
         state_reg=state_reg,
         bus=bus,
         encryption_key=cfg.encryption_key.get_secret_value().encode(),
+        clip_buffer=clip_buffer,
     )
     await cam_manager.start_all()
     logger.info("CameraManager started — %d camera(s) active", cam_manager.active_count)
@@ -120,6 +123,8 @@ async def _lifespan(app: FastAPI):
         session_factory=get_session_factory(),
         frame_buffer=frame_buffer,
         snapshot_dir=cfg.snapshot_dir,
+        clip_buffer=clip_buffer,
+        clip_dir=cfg.clip_dir,
     )
     alert_manager.register(bus)
 

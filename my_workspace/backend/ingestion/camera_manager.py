@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from cryptography.fernet import Fernet
 
 from ingestion.camera_thread import CameraThread
+from ingestion.clip_buffer import ClipBuffer
 from ingestion.frame_buffer import FrameBuffer
 from protocol.mtp import MTPMessage, MTPMsgType
 from ssot.state_registry import StateRegistry
@@ -37,8 +38,10 @@ class CameraManager:
         state_reg: StateRegistry,
         bus: "MessageBus",
         encryption_key: bytes,
+        clip_buffer: ClipBuffer | None = None,
     ) -> None:
         self._buffer = buffer
+        self._clip_buffer = clip_buffer
         self._config = config_svc
         self._state = state_reg
         self._bus = bus
@@ -71,6 +74,8 @@ class CameraManager:
         if thread:
             thread.stop()
             self._buffer.remove(camera_id)
+            if self._clip_buffer is not None:
+                self._clip_buffer.remove(camera_id)
             logger.info("Camera %d stopped", camera_id)
 
     async def restart_camera(self, camera_id: int) -> None:
@@ -121,6 +126,7 @@ class CameraManager:
                 source_type="webcam",
                 device_index=device_index,
                 target_fps=cam.fps,
+                clip_buffer=self._clip_buffer,
             )
         else:
             # RTSP — decrypt URL before passing to thread
@@ -140,6 +146,7 @@ class CameraManager:
                 source_type="rtsp",
                 rtsp_url=rtsp_url,
                 target_fps=cam.fps,
+                clip_buffer=self._clip_buffer,
             )
 
         self._threads[camera_id] = thread

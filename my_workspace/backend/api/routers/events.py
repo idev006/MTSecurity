@@ -32,10 +32,16 @@ def _snapshot_url(base_url: str, path: str | None, event_id: int) -> str | None:
     return f"{base_url.rstrip('/')}/api/v1/events/{event_id}/snapshot"
 
 
+def _clip_url(base_url: str, path: str | None, event_id: int) -> str | None:
+    if path is None:
+        return None
+    return f"{base_url.rstrip('/')}/api/v1/events/{event_id}/clip"
+
+
 def _to_read(event: Event, base_url: str) -> dict:
     d = {c.name: getattr(event, c.name) for c in event.__table__.columns}
     d["snapshot_url"] = _snapshot_url(base_url, event.snapshot_path, event.id)
-    d["clip_url"] = None
+    d["clip_url"] = _clip_url(base_url, event.clip_path, event.id)
     return d
 
 
@@ -107,6 +113,23 @@ async def get_snapshot(event_id: int, request: Request, db: DBDep, user: Current
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Snapshot file missing on disk")
         
     return FileResponse(path, media_type="image/jpeg")
+
+
+@router.get("/{event_id}/clip", dependencies=[require("events:read")])
+async def get_clip(event_id: int, request: Request, db: DBDep, user: CurrentUser) -> FileResponse:
+    event = await db.get(Event, event_id)
+    if event is None or not event.clip_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Clip not found")
+
+    allowed = user.camera_ids()
+    if allowed is not None and event.camera_id not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Access denied")
+
+    path = request.app.state.cfg.clip_dir / event.clip_path
+    if not path.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Clip file missing on disk")
+
+    return FileResponse(path, media_type="video/mp4")
 
 
 # ── Acknowledge ───────────────────────────────────────────────────────────────

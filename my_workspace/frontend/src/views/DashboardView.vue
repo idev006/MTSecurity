@@ -117,36 +117,39 @@
 
             <!-- Table -->
             <div v-else class="overflow-x-auto">
-              <table class="table table-xs">
+              <table class="w-full text-[11px] font-mono">
                 <thead>
-                  <tr class="font-mono text-xs opacity-40">
-                    <th class="pl-5">TIME</th><th>CAM</th><th>TYPE</th>
-                    <th>SEV</th><th>STATUS</th><th></th>
+                  <tr class="border-b border-base-300">
+                    <th class="px-4 py-1.5 text-left font-normal opacity-40 tracking-widest">TIME</th>
+                    <th class="px-2 py-1.5 text-left font-normal opacity-40 tracking-widest">CAM</th>
+                    <th class="px-2 py-1.5 text-left font-normal opacity-40 tracking-widest">TYPE</th>
+                    <th class="px-2 py-1.5 text-left font-normal opacity-40 tracking-widest">SEV</th>
+                    <th class="px-2 py-1.5 text-left font-normal opacity-40 tracking-widest">STATUS</th>
+                    <th class="px-2 py-1.5"></th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="ev in events.recentAlerts" :key="ev.id"
-                    class="group hover"
-                    :class="[rowSevClass(ev.severity), ev.status === 'NEW' ? 'row-new' : '']">
-                    <td class="font-mono text-xs opacity-55 pl-5"
-                      :title="ev.occurred_at">
+                    class="group border-b border-base-300/40 hover:bg-base-200/30 transition-colors"
+                    :class="ev.status === 'NEW' ? 'row-new' : ''">
+                    <td class="px-4 py-1 opacity-50 whitespace-nowrap" :title="ev.occurred_at">
                       {{ relTime(ev.occurred_at) }}
                     </td>
-                    <td class="font-mono text-xs">{{ ev.camera_id ?? '—' }}</td>
-                    <td class="text-xs capitalize font-semibold">
+                    <td class="px-2 py-1 opacity-70">{{ ev.camera_id ?? '—' }}</td>
+                    <td class="px-2 py-1 font-semibold capitalize">
                       {{ ev.behavior.replace(/_/g, ' ') }}
                     </td>
-                    <td>
+                    <td class="px-2 py-1">
                       <span class="badge badge-xs font-mono" :class="sevClass(ev.severity)">
                         {{ ev.severity.slice(0,4).toUpperCase() }}
                       </span>
                     </td>
-                    <td>
+                    <td class="px-2 py-1">
                       <span class="badge badge-xs font-mono" :class="statusClass(ev.status)">
                         {{ ev.status }}
                       </span>
                     </td>
-                    <td class="text-right pr-3">
+                    <td class="px-2 py-1 text-right">
                       <button v-if="ev.status === 'NEW'"
                         class="btn btn-xs btn-square btn-success btn-outline action-reveal"
                         :class="{ 'opacity-100': acking.has(ev.id) }"

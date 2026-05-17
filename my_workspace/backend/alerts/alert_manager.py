@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
     from alerts.notifications.dispatcher import NotificationDispatcher
     from protocol.message_bus import MessageBus
     from ssot.config_service import ConfigService
+    from ingestion.clip_buffer import ClipBuffer
     from ingestion.frame_buffer import FrameBuffer
     from pathlib import Path
 
@@ -40,6 +42,8 @@ class AlertManager:
         session_factory: Callable,
         frame_buffer: "FrameBuffer",
         snapshot_dir: "Path",
+        clip_buffer: "ClipBuffer | None" = None,
+        clip_dir: "Path | None" = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._config = config_svc
@@ -48,6 +52,8 @@ class AlertManager:
         self._session_factory = session_factory
         self._frame_buffer = frame_buffer
         self._snapshot_dir = snapshot_dir
+        self._clip_buffer = clip_buffer
+        self._clip_dir = clip_dir
 
     def register(self, bus: "MessageBus") -> None:
         bus.subscribe(MTPMsgType.RULE_TRIGGERED, self._on_rule_triggered)
@@ -130,10 +136,30 @@ class AlertManager:
                 logger.warning("AlertManager: No frame found in buffer for camera %d. Buffer keys: %s",
                                camera_id, list(self._frame_buffer._slots.keys()))
             
-            await db.commit()
-            logger.info("Event %d persisted — behavior=%s camera=%d snapshot=%s", event_id, behavior, camera_id, snapshot_path)
+            # ── 3. Save video clip (ring buffer → MP4) ──────────────────────────
+            clip_path_name: str | None = None
+            if self._clip_buffer is not None and self._clip_dir is not None:
+                try:
+                    clip_path = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self._clip_buffer.save_clip(
+                            camera_id, event_id, self._clip_dir
+                        ),
+                    )
+                    if clip_path:
+                        event.clip_path = clip_path.name
+                        clip_path_name = clip_path.name
+                        logger.info("AlertManager: clip saved → %s", clip_path)
+                except Exception as e:
+                    logger.error("AlertManager: clip save failed for event %d: %s", event_id, e)
 
-        # ── 3. Resolve camera name ────────────────────────────────────────────
+            await db.commit()
+            logger.info(
+                "Event %d persisted — behavior=%s camera=%d snapshot=%s clip=%s",
+                event_id, behavior, camera_id, snapshot_path, clip_path_name,
+            )
+
+        # ── 4. Resolve camera name ────────────────────────────────────────────
         cam = await self._config.get_camera(camera_id)
         camera_name = cam.name if cam else f"Camera {camera_id}"
 
@@ -141,8 +167,12 @@ class AlertManager:
             f"{self._base_url}/api/v1/events/{event_id}/snapshot"
             if snapshot_path else None
         )
+        clip_url = (
+            f"{self._base_url}/api/v1/events/{event_id}/clip"
+            if clip_path_name else None
+        )
 
-        # ── 3. Dispatch notifications ────────────────────────────────────────
+        # ── 5. Dispatch notifications ────────────────────────────────────────
         alert = AlertPayload(
             event_id=event_id,
             rule_name=rule_name,
@@ -152,13 +182,13 @@ class AlertManager:
             severity=severity,
             confidence=confidence,
             snapshot_url=snapshot_url,
-            clip_url=None,
+            clip_url=clip_url,
             occurred_at=datetime.now(timezone.utc).isoformat(),
         )
         results = await self._dispatcher.dispatch(alert)
         channels_notified = [r.channel for r in results if r.success]
 
-        # ── 4. Publish ALERT_FIRED for WebSocket ──────────────────────────────
+        # ── 6. Publish ALERT_FIRED for WebSocket ──────────────────────────────
         fired_payload = AlertFiredPayload(
             alert_id=event_id,
             rule_name=rule_name,
@@ -166,7 +196,7 @@ class AlertManager:
             behavior=behavior,
             severity=severity,
             snapshot_url=snapshot_url,
-            clip_url=None,
+            clip_url=clip_url,
             channels_notified=channels_notified,
         )
         fired_msg = MTPMessage(

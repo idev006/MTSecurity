@@ -125,9 +125,9 @@
                   </span>
                 </td>
                 <td>
-                  <div>
+                  <div class="flex items-center gap-1.5 flex-wrap">
                     <span class="badge badge-xs font-mono" :class="statusClass(ev.status)">{{ ev.status }}</span>
-                    <span v-if="ev.acknowledged_by" class="block text-[10px] opacity-30 font-mono mt-0.5">
+                    <span v-if="ev.acknowledged_by" class="text-[10px] opacity-30 font-mono">
                       {{ ev.acknowledged_by }}
                     </span>
                   </div>
@@ -141,6 +141,13 @@
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                      </button>
+                    </div>
+                    <div v-if="ev.clip_url" class="tooltip tooltip-left" data-tip="Play clip">
+                      <button class="btn btn-xs btn-square btn-ghost text-info" @click="openClip(ev)">
+                        <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M8 5v14l11-7z"/>
                         </svg>
                       </button>
                     </div>
@@ -282,6 +289,34 @@
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <!-- ── Clip player modal ───────────────────────────────────────────────── -->
+    <dialog ref="clipModal" class="modal" @close="stopClip">
+      <div class="modal-box max-w-3xl p-0 overflow-hidden bg-black">
+        <!-- Header -->
+        <div class="flex items-center gap-3 px-4 py-2 bg-base-200/80">
+          <span class="font-mono text-xs font-bold">
+            {{ clipEv?.behavior.replace(/_/g, ' ').toUpperCase() }}
+          </span>
+          <span class="badge badge-xs font-mono" :class="sevClass(clipEv?.severity ?? '')">
+            {{ (clipEv?.severity ?? '').toUpperCase() }}
+          </span>
+          <span class="font-mono text-xs opacity-50 ml-auto">
+            CAM {{ clipEv?.camera_id }} · ID #{{ clipEv?.id }}
+          </span>
+          <button class="btn btn-xs btn-ghost btn-circle ml-1" @click="clipModal?.close()">✕</button>
+        </div>
+        <!-- Video -->
+        <video
+          ref="videoEl"
+          class="w-full max-h-[70vh] bg-black"
+          controls
+          autoplay
+          :src="clipEv ? `${clipEv.clip_url}?token=${token}` : undefined"
+        ></video>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
   </AppLayout>
 </template>
 
@@ -304,6 +339,24 @@ const snapshotEv    = ref<EventRead | null>(null)
 function openSnapshot(ev: EventRead) {
   snapshotEv.value = ev
   snapshotModal.value?.showModal()
+}
+
+// ── Clip player modal ─────────────────────────────────────────────────────────
+const clipModal = ref<HTMLDialogElement | null>(null)
+const videoEl   = ref<HTMLVideoElement | null>(null)
+const clipEv    = ref<EventRead | null>(null)
+
+function openClip(ev: EventRead) {
+  clipEv.value = ev
+  clipModal.value?.showModal()
+}
+
+function stopClip() {
+  if (videoEl.value) {
+    videoEl.value.pause()
+    videoEl.value.src = ''
+  }
+  clipEv.value = null
 }
 
 // ── Local state — NOT shared store, avoids race with AppLayout.fetchRecent() ──
