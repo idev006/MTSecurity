@@ -20,7 +20,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    try { await authApi.logout() } catch { /* token may already be expired */ }
+    const refreshToken = localStorage.getItem('refresh_token') ?? undefined
+    try { await authApi.logout(refreshToken) } catch { /* token may already be expired */ }
     token.value = null
     user.value = null
     localStorage.removeItem('access_token')

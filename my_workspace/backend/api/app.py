@@ -178,6 +178,7 @@ def create_app() -> FastAPI:
     from config import get_settings
     from api.middleware.audit import AuditMiddleware
     from api.routers import auth, cameras, events, health, lpr, rules, users, zones
+    from api.routers.system import router as system_router
     from api.routers.simulate import router as simulate_router
     from api.websocket.router import router as ws_router
 
@@ -222,6 +223,7 @@ def create_app() -> FastAPI:
     application.include_router(events.router,    prefix=_PREFIX)
     application.include_router(lpr.router,       prefix=_PREFIX)
     application.include_router(users.router,     prefix=_PREFIX)
+    application.include_router(system_router,    prefix=_PREFIX)
     application.include_router(simulate_router,  prefix=_PREFIX)
     application.include_router(ws_router,        prefix=_PREFIX)
 

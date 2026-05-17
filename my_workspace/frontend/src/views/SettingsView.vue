@@ -103,6 +103,75 @@
           </div>
         </div>
 
+        <!-- Token settings — ADMIN+ only -->
+        <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
+          class="card bg-base-100 border border-base-300 shadow-none">
+          <div class="card-body p-0">
+            <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between">
+              <h3 class="font-mono text-xs font-semibold opacity-60">การตั้งค่า Token</h3>
+              <span class="badge badge-xs badge-ghost font-mono">JWT</span>
+            </div>
+
+            <div v-if="tokenLoading" class="flex justify-center py-6">
+              <span class="loading loading-spinner loading-sm opacity-40"></span>
+            </div>
+
+            <div v-else class="p-4 flex flex-col gap-4">
+              <!-- Access token expiry -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">Access Token Expiry</p>
+                  <p class="text-xs opacity-50 mt-0.5">อายุของ access token หลัง login</p>
+                </div>
+                <select v-model="tokenForm.access_minutes"
+                  class="select select-bordered select-sm font-mono w-32 shrink-0">
+                  <option :value="15">15 นาที</option>
+                  <option :value="30">30 นาที</option>
+                  <option :value="60">1 ชั่วโมง</option>
+                  <option :value="120">2 ชั่วโมง</option>
+                  <option :value="240">4 ชั่วโมง</option>
+                  <option :value="480">8 ชั่วโมง</option>
+                </select>
+              </div>
+
+              <!-- Refresh token expiry -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">Refresh Token Expiry</p>
+                  <p class="text-xs opacity-50 mt-0.5">อายุของ refresh token (ต้อง login ใหม่หลังหมดอายุ)</p>
+                </div>
+                <select v-model="tokenForm.refresh_days"
+                  class="select select-bordered select-sm font-mono w-32 shrink-0">
+                  <option :value="1">1 วัน</option>
+                  <option :value="3">3 วัน</option>
+                  <option :value="7">7 วัน</option>
+                  <option :value="14">14 วัน</option>
+                  <option :value="30">30 วัน</option>
+                  <option :value="90">90 วัน</option>
+                </select>
+              </div>
+
+              <p class="text-xs opacity-40 font-mono">
+                หมายเหตุ: การเปลี่ยนค่านี้มีผลกับ token ที่ออกใหม่เท่านั้น token ที่มีอยู่แล้วไม่ได้รับผลกระทบ
+              </p>
+
+              <div class="flex items-center gap-2">
+                <button class="btn btn-primary btn-sm font-mono"
+                  :disabled="tokenSaving"
+                  @click="saveTokenSettings">
+                  <span v-if="tokenSaving" class="loading loading-spinner loading-xs"></span>
+                  บันทึก
+                </button>
+                <span v-if="tokenSaveMsg"
+                  class="text-xs font-mono"
+                  :class="tokenSaveMsg.startsWith('✓') ? 'text-success' : 'text-error'">
+                  {{ tokenSaveMsg }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Notification channels status -->
         <div class="card bg-base-100 border border-base-300 shadow-none">
           <div class="card-body p-0">
@@ -307,7 +376,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSystemStore } from '@/stores/system'
 import { useThemeStore, ALL_THEMES } from '@/stores/theme'
-import { usersApi } from '@/api/client'
+import { usersApi, systemApi } from '@/api/client'
 
 const auth       = useAuthStore()
 const system     = useSystemStore()
@@ -318,12 +387,44 @@ const tab = ref<'system' | 'display' | 'account'>('system')
 
 onMounted(() => {
   system.fetchHealth()
+  if (auth.role === 'SUPERADMIN' || auth.role === 'ADMIN') {
+    loadTokenSettings()
+  }
 })
 
-// ── Auth ──────────────────────────────────────────────────────────────────
-async function handleLogout() {
-  await auth.logout()
-  router.push('/login')
+// ── Token settings (ADMIN+) ───────────────────────────────────────────────
+const tokenLoading  = ref(false)
+const tokenSaving   = ref(false)
+const tokenSaveMsg  = ref('')
+const tokenForm     = ref({ access_minutes: 60, refresh_days: 7 })
+
+async function loadTokenSettings() {
+  tokenLoading.value = true
+  try {
+    const settings = await systemApi.getSettings()
+    for (const s of settings) {
+      if (s.key === 'jwt_access_token_expire_minutes' && s.value)
+        tokenForm.value.access_minutes = Number(s.value)
+      if (s.key === 'jwt_refresh_token_expire_days' && s.value)
+        tokenForm.value.refresh_days = Number(s.value)
+    }
+  } catch { /* ignore — uses defaults */ }
+  finally { tokenLoading.value = false }
+}
+
+async function saveTokenSettings() {
+  tokenSaving.value = true
+  tokenSaveMsg.value = ''
+  try {
+    await systemApi.updateSetting('jwt_access_token_expire_minutes', String(tokenForm.value.access_minutes))
+    await systemApi.updateSetting('jwt_refresh_token_expire_days',   String(tokenForm.value.refresh_days))
+    tokenSaveMsg.value = '✓ บันทึกแล้ว'
+    setTimeout(() => { tokenSaveMsg.value = '' }, 3000)
+  } catch (e: any) {
+    tokenSaveMsg.value = e?.message ?? 'บันทึกไม่สำเร็จ'
+  } finally {
+    tokenSaving.value = false
+  }
 }
 
 // ── Notification channels — status from /health (boolean only, no secrets) ──

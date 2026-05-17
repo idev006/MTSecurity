@@ -99,6 +99,29 @@
               <li><a class="text-error" @click="handleLogout">Logout</a></li>
             </ul>
           </div>
+
+          <!-- ── Logout confirm modal ─────────────────────────────────── -->
+          <dialog ref="logoutModal" class="modal">
+            <div class="modal-box max-w-sm">
+              <h3 class="font-bold font-mono text-base">ออกจากระบบ?</h3>
+              <p class="py-3 text-sm opacity-70">
+                คุณกำลังจะออกจากระบบในฐานะ
+                <span class="font-mono font-bold">{{ auth.username }}</span>
+                session ปัจจุบันจะสิ้นสุดทันที
+              </p>
+              <div class="modal-action gap-2">
+                <button class="btn btn-error btn-sm font-mono" @click="confirmLogout">
+                  ออกจากระบบ
+                </button>
+                <form method="dialog">
+                  <button class="btn btn-sm font-mono">ยกเลิก</button>
+                </form>
+              </div>
+            </div>
+            <form method="dialog" class="modal-backdrop">
+              <button>close</button>
+            </form>
+          </dialog>
         </div>
       </div>
 
@@ -304,7 +327,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, nextTick } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useCamerasStore } from '@/stores/cameras'
@@ -379,7 +402,14 @@ onUnmounted(() => {
   clearInterval(_clockTimer)
 })
 
-async function handleLogout() {
+const logoutModal = ref<HTMLDialogElement | null>(null)
+
+function handleLogout() {
+  logoutModal.value?.showModal()
+}
+
+async function confirmLogout() {
+  logoutModal.value?.close()
   await auth.logout()
   router.push('/login')
 }

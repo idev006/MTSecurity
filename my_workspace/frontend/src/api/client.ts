@@ -132,7 +132,8 @@ export interface HealthResponse {
 export const authApi = {
   login:   (username: string, password: string) =>
     post<TokenResponse>('/auth/login', { username, password }),
-  logout:  () => post<void>('/auth/logout', {}),
+  logout:  (refresh_token?: string) =>
+    post<void>('/auth/logout', { refresh_token: refresh_token ?? null }),
   refresh: (refresh_token: string) =>
     post<TokenResponse>('/auth/refresh', { refresh_token }),
   me:      () => get<UserRead>('/auth/me'),
@@ -273,4 +274,20 @@ export const rulesApi = {
 
 export const healthApi = {
   get: () => get<HealthResponse>('/health'),
+}
+
+// ── System Settings ───────────────────────────────────────────────────────────
+
+export interface SystemSetting {
+  key: string
+  value: string
+  label: string
+  updated_by: string | null
+  updated_at: string
+}
+
+export const systemApi = {
+  getSettings:    () => get<SystemSetting[]>('/system/settings'),
+  updateSetting:  (key: string, value: string) =>
+    patch<SystemSetting>('/system/settings', { key, value }),
 }

@@ -73,6 +73,10 @@ _PERMISSIONS: dict[str, set[str]] = {
     # API Keys
     "api_keys:manage":      {Role.SUPERADMIN, Role.ADMIN},
     "api_keys:external":    {Role.EXTERNAL_SYSTEM},
+
+    # System settings
+    "system:read":          {Role.SUPERADMIN, Role.ADMIN},
+    "system:write":         {Role.SUPERADMIN, Role.ADMIN},
 }
 
 

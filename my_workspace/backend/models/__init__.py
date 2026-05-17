@@ -9,6 +9,7 @@ from models.event import Event
 from models.lpr_whitelist import LPRWhitelist
 from models.notification import Notification
 from models.rule import Rule
+from models.system_setting import SystemSetting
 from models.token_blacklist import TokenBlacklist
 from models.user import User
 from models.zone import Zone
@@ -27,4 +28,5 @@ __all__ = [
     "AuditLog",
     "AlertNote",
     "TokenBlacklist",
+    "SystemSetting",
 ]
