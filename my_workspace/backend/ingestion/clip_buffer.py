@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 import threading
 from collections import deque
 from pathlib import Path
@@ -18,6 +20,55 @@ logger = logging.getLogger(__name__)
 # (≈ 30–50 KB/frame × 150 ≈ 5–8 MB per camera).
 _DEFAULT_MAX_FRAMES = 150
 _DEFAULT_FPS = 15.0
+
+
+def _apply_faststart(src: Path) -> Path:
+    """
+    Re-mux an MP4 with ``-movflags +faststart`` so the moov atom sits at the
+    beginning of the file.  Browsers require this to show correct duration.
+
+    If FFmpeg is not installed the original file is returned unchanged (the
+    video will still play in most browsers but may show 0:00 duration until
+    fully downloaded).
+    """
+    if not shutil.which("ffmpeg"):
+        logger.warning(
+            "ffmpeg not found — clip moov atom is at end-of-file; "
+            "browser may show 0:00 duration.  Install ffmpeg to fix this."
+        )
+        return src
+
+    tmp = src.with_suffix(".tmp.mp4")
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", str(src),
+                "-c", "copy",
+                "-movflags", "+faststart",
+                str(tmp),
+            ],
+            capture_output=True,
+            timeout=60,
+        )
+        if result.returncode == 0:
+            src.unlink()
+            tmp.rename(src)
+            logger.debug("ClipBuffer: faststart applied → %s", src)
+        else:
+            logger.warning(
+                "ClipBuffer: ffmpeg faststart failed (rc=%d): %s",
+                result.returncode,
+                result.stderr.decode(errors="replace")[-500:],
+            )
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
+    except Exception as exc:
+        logger.warning("ClipBuffer: faststart error — %s", exc)
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
+
+    return src
 
 
 class ClipBuffer:
@@ -111,6 +162,12 @@ class ClipBuffer:
             logger.info(
                 "ClipBuffer: saved %d-frame clip → %s", len(frames), out_path
             )
+
+            # ── FFmpeg faststart: move moov atom to front ─────────────────────
+            # cv2/mp4v writes moov at end-of-file; browsers need it at the
+            # beginning to determine duration.  Re-mux in-place if ffmpeg exists.
+            out_path = _apply_faststart(out_path)
+
             return out_path
 
         except Exception:
