@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from api.deps import CurrentUser, DBDep, require
+from models.rule import Rule
 from models.zone import Zone
 from schemas.zone import ZoneCreate, ZoneRead, ZoneUpdate
 
@@ -77,3 +78,61 @@ async def delete_zone(zone_id: int, request: Request, db: DBDep, user: CurrentUs
     await config_svc.invalidate("zone", zone_id)
     await config_svc.notify("zone", zone_id, {"deleted": True}, actor=user.username)
     logger.info("Zone deleted: id=%d by=%s", zone_id, user.username)
+
+
+# ── Enable / Disable (cascade to rules) ──────────────────────────────────────
+
+async def _zone_set_active(
+    zone_id: int,
+    active: bool,
+    request: Request,
+    db: DBDep,
+    user: CurrentUser,
+) -> Zone:
+    zone = await db.get(Zone, zone_id)
+    if zone is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
+
+    previous = zone.is_active
+    if previous == active:
+        return zone  # no-op — already in desired state
+
+    # Load child rules for cascade
+    rules_result = await db.execute(select(Rule).where(Rule.zone_id == zone_id))
+    child_rules = rules_result.scalars().all()
+
+    # Apply all changes in one commit
+    zone.is_active = active
+    for rule in child_rules:
+        rule.is_active = active
+
+    await db.commit()
+    await db.refresh(zone)
+
+    # Propagate config changes for zone and all cascaded rules
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("zone", zone_id)
+    await config_svc.notify("zone", zone_id, {"is_active": active}, actor=user.username)
+    for rule in child_rules:
+        await db.refresh(rule)
+        await config_svc.invalidate("rule", rule.id)
+        await config_svc.notify("rule", rule.id, {"is_active": active}, actor=user.username)
+
+    logger.info("Zone %d (%s) %s by %s — cascaded %d rules",
+                zone_id, zone.name, "enabled" if active else "disabled", user.username,
+                len(child_rules))
+    return zone
+
+
+@router.post("/{zone_id}/enable", response_model=ZoneRead,
+             dependencies=[require("zones:update")])
+async def enable_zone(zone_id: int, request: Request, db: DBDep, user: CurrentUser) -> Zone:
+    """Enable a zone and all its rules."""
+    return await _zone_set_active(zone_id, True, request, db, user)
+
+
+@router.post("/{zone_id}/disable", response_model=ZoneRead,
+             dependencies=[require("zones:update")])
+async def disable_zone(zone_id: int, request: Request, db: DBDep, user: CurrentUser) -> Zone:
+    """Disable a zone and all its rules."""
+    return await _zone_set_active(zone_id, False, request, db, user)

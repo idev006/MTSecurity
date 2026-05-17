@@ -799,8 +799,13 @@ async function submitRule() {
 
 async function toggleZone(zone: ZoneRead) {
   try {
-    const updated = await zonesStore.patchZone(zone.id, { is_active: !zone.is_active })
+    const endpoint = zone.is_active ? 'disable' : 'enable'
+    const updated = await apiPost<ZoneRead>(`/zones/${zone.id}/${endpoint}`, {})
+    // Update zone in local list
     zones.value = zones.value.map(z => z.id === updated.id ? updated : z)
+    // Cascade: flip is_active on every rule that belongs to this zone
+    const newActive = updated.is_active
+    rules.value = rules.value.map(r => r.zone_id === zone.id ? { ...r, is_active: newActive } : r)
   } catch (e: any) {
     toastStore.push({ type: 'error', title: 'Toggle Failed', message: e.message })
   }
@@ -808,7 +813,8 @@ async function toggleZone(zone: ZoneRead) {
 
 async function toggleRule(rule: RuleRead) {
   try {
-    const updated = await apiPatch<RuleRead>(`/rules/${rule.id}`, { is_active: !rule.is_active })
+    const endpoint = rule.is_active ? 'disable' : 'enable'
+    const updated = await apiPost<RuleRead>(`/rules/${rule.id}/${endpoint}`, {})
     const norm = {
       ...updated,
       logic:           typeof updated.logic           === 'string' ? JSON.parse(updated.logic)           : updated.logic,

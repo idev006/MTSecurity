@@ -198,6 +198,8 @@ export const zonesApi = {
   create: (body: unknown) => post<ZoneRead>('/zones', body),
   update: (id: number, body: unknown) => patch<ZoneRead>(`/zones/${id}`, body),
   delete: (id: number) => del(`/zones/${id}`),
+  enable:  (id: number) => post<ZoneRead>(`/zones/${id}/enable`, {}),
+  disable: (id: number) => post<ZoneRead>(`/zones/${id}/disable`, {}),
 }
 
 // ── LPR ───────────────────────────────────────────────────────────────────────
@@ -263,6 +265,8 @@ export const rulesApi = {
   get: (id: number) => get<RuleRead>(`/rules/${id}`),
   create: (body: unknown) => post<RuleRead>('/rules', body),
   update: (id: number, body: unknown) => patch<RuleRead>(`/rules/${id}`, body),
+  enable:  (id: number) => post<RuleRead>(`/rules/${id}/enable`, {}),
+  disable: (id: number) => post<RuleRead>(`/rules/${id}/disable`, {}),
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

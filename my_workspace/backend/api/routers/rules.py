@@ -89,3 +89,46 @@ async def delete_rule(rule_id: int, request: Request, db: DBDep, user: CurrentUs
     await config_svc.invalidate("rule", rule_id)
     await config_svc.notify("rule", rule_id, {"deleted": True}, actor=user.username)
     logger.info("Rule deleted: id=%d by=%s", rule_id, user.username)
+
+
+# ── Enable / Disable (leaf — no cascade) ─────────────────────────────────────
+
+async def _rule_set_active(
+    rule_id: int,
+    active: bool,
+    request: Request,
+    db: DBDep,
+    user: CurrentUser,
+) -> Rule:
+    rule = await db.get(Rule, rule_id)
+    if rule is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Rule not found")
+
+    if rule.is_active == active:
+        return rule  # no-op
+
+    rule.is_active = active
+    await db.commit()
+    await db.refresh(rule)
+
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("rule", rule_id)
+    await config_svc.notify("rule", rule_id, {"is_active": active}, actor=user.username)
+
+    logger.info("Rule %d (%s) %s by %s",
+                rule_id, rule.name, "enabled" if active else "disabled", user.username)
+    return rule
+
+
+@router.post("/{rule_id}/enable", response_model=RuleRead,
+             dependencies=[require("rules:update")])
+async def enable_rule(rule_id: int, request: Request, db: DBDep, user: CurrentUser) -> Rule:
+    """Enable a rule."""
+    return await _rule_set_active(rule_id, True, request, db, user)
+
+
+@router.post("/{rule_id}/disable", response_model=RuleRead,
+             dependencies=[require("rules:update")])
+async def disable_rule(rule_id: int, request: Request, db: DBDep, user: CurrentUser) -> Rule:
+    """Disable a rule."""
+    return await _rule_set_active(rule_id, False, request, db, user)

@@ -12,6 +12,8 @@ from api.deps import CurrentUser, DBDep, require
 from ingestion.webcam_enumerator import EnumeratedDevice, enumerate_webcams
 from models.audit_log import AuditLog
 from models.camera import Camera
+from models.rule import Rule
+from models.zone import Zone
 from schemas.camera import CameraCreate, CameraRead, CameraStatus, CameraUpdate, WebcamDevice
 
 logger = logging.getLogger(__name__)
@@ -173,7 +175,22 @@ async def _set_active(
     if previous == active:
         return cam   # no-op — already in desired state
 
+    # ── Load child zones and their rules for cascade ──────────────────────────
+    zones_result = await db.execute(select(Zone).where(Zone.camera_id == camera_id))
+    child_zones = zones_result.scalars().all()
+
+    rules_by_zone: dict[int, list] = {}
+    for zone in child_zones:
+        rules_result = await db.execute(select(Rule).where(Rule.zone_id == zone.id))
+        rules_by_zone[zone.id] = rules_result.scalars().all()
+
+    # ── Apply all changes in one commit ───────────────────────────────────────
     cam.is_active = active
+    for zone in child_zones:
+        zone.is_active = active
+        for rule in rules_by_zone[zone.id]:
+            rule.is_active = active
+
     await db.commit()
     await db.refresh(cam)
 
@@ -184,6 +201,21 @@ async def _set_active(
     else:
         cam_manager.stop_camera(camera_id)
 
+    # ── Propagate config changes for cascaded zones and rules ─────────────────
+    config_svc = request.app.state.config_svc
+    await config_svc.invalidate("camera", camera_id)
+    for zone in child_zones:
+        await db.refresh(zone)
+        await config_svc.invalidate("zone", zone.id)
+        await config_svc.notify("zone", zone.id, {"is_active": active}, actor=user.username)
+        for rule in rules_by_zone[zone.id]:
+            await db.refresh(rule)
+            await config_svc.invalidate("rule", rule.id)
+            await config_svc.notify("rule", rule.id, {"is_active": active}, actor=user.username)
+
+    n_zones = len(child_zones)
+    n_rules = sum(len(v) for v in rules_by_zone.values())
+
     # Explicit audit log entry — more descriptive than generic middleware record
     action = "camera.enable" if active else "camera.disable"
     detail = json.dumps({
@@ -191,6 +223,8 @@ async def _set_active(
         "source_type": cam.source_type,
         "previous_is_active": previous,
         "new_is_active": active,
+        "cascaded_zones": n_zones,
+        "cascaded_rules": n_rules,
     })
     db.add(AuditLog(
         user_id=user.id,
@@ -204,8 +238,9 @@ async def _set_active(
     ))
     await db.commit()
 
-    logger.info("Camera %d (%s) %s by %s",
-                camera_id, cam.name, "enabled" if active else "disabled", user.username)
+    logger.info("Camera %d (%s) %s by %s — cascaded %d zones, %d rules",
+                camera_id, cam.name, "enabled" if active else "disabled", user.username,
+                n_zones, n_rules)
     return cam
 
 

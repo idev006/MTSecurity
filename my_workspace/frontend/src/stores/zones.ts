@@ -28,8 +28,21 @@ export const useZonesStore = defineStore('zones', () => {
   }
 
   async function patchZone(id: number, body: Partial<ZoneRead>): Promise<ZoneRead> {
+    // Use dedicated enable/disable endpoints when only toggling is_active
+    // so the backend can cascade the change to child rules.
+    if (Object.keys(body).length === 1 && 'is_active' in body) {
+      return setZoneActive(id, body.is_active!)
+    }
     const updated = await zonesApi.update(id, body)
     zones.value = zones.value.map(z => z.id === id ? updated : z)
+    return updated
+  }
+
+  async function setZoneActive(id: number, active: boolean): Promise<ZoneRead> {
+    const updated = active ? await zonesApi.enable(id) : await zonesApi.disable(id)
+    zones.value = zones.value.map(z => z.id === id ? updated : z)
+    // Cascade: reflect the new is_active on all rules in this zone
+    rules.value = rules.value.map(r => r.zone_id === id ? { ...r, is_active: active } : r)
     return updated
   }
 
@@ -45,5 +58,6 @@ export const useZonesStore = defineStore('zones', () => {
     zonesForCamera,
     rulesForZone,
     patchZone,
+    setZoneActive,
   }
 })
