@@ -53,6 +53,15 @@
               </svg>
             </button>
           </div>
+          <div v-if="canDelete" class="tooltip tooltip-left" data-tip="Purge events…">
+            <button class="btn btn-square btn-xs btn-ghost text-error opacity-60 hover:opacity-100"
+              @click="openPurgeModal">
+              <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -183,6 +192,16 @@
                         </svg>
                       </button>
                     </div>
+                    <div v-if="canDelete" class="tooltip tooltip-left" data-tip="Delete event">
+                      <button class="btn btn-xs btn-square btn-ghost text-error opacity-40 hover:opacity-100"
+                        :disabled="busy.has(ev.id)"
+                        @click="confirmDeleteOne(ev)">
+                        <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -289,6 +308,90 @@
       <form method="dialog" class="modal-backdrop"><button>close</button></form>
     </dialog>
 
+    <!-- ── Delete single event confirm ─────────────────────────────────────── -->
+    <dialog ref="deleteModal" class="modal">
+      <div class="modal-box max-w-sm">
+        <h3 class="font-mono text-sm font-bold text-error mb-1">DELETE EVENT</h3>
+        <p class="text-xs opacity-60 mb-4">
+          Event <span class="font-mono font-bold">#{{ deleteTarget?.id }}</span>
+          and its snapshot/clip files will be permanently removed.
+          This cannot be undone.
+        </p>
+        <div class="modal-action gap-2">
+          <form method="dialog"><button class="btn btn-xs btn-ghost font-mono">CANCEL</button></form>
+          <button class="btn btn-xs btn-error font-mono"
+            :disabled="deleteWorking"
+            @click="doDeleteOne">
+            <span v-if="deleteWorking" class="loading loading-spinner loading-xs"></span>
+            DELETE
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button>close</button></form>
+    </dialog>
+
+    <!-- ── Purge events modal ────────────────────────────────────────────────── -->
+    <dialog ref="purgeModal" class="modal">
+      <div class="modal-box max-w-md">
+        <h3 class="font-mono text-sm font-bold text-error mb-3">PURGE EVENTS</h3>
+
+        <div class="flex flex-col gap-3 text-xs">
+
+          <!-- Older than N days -->
+          <label class="flex flex-col gap-1">
+            <span class="font-mono opacity-50">OLDER THAN (DAYS)</span>
+            <div class="flex items-center gap-2">
+              <input type="range" min="1" max="365" v-model.number="purge.days"
+                class="range range-xs range-error flex-1" />
+              <span class="font-mono font-bold w-8 text-right">{{ purge.days }}</span>
+            </div>
+            <span class="opacity-40 font-mono">
+              Before {{ purgeBeforeDt.toLocaleDateString() }}
+            </span>
+          </label>
+
+          <!-- Status filter -->
+          <div class="flex flex-col gap-1">
+            <span class="font-mono opacity-50">STATUS (empty = all)</span>
+            <div class="flex flex-wrap gap-2">
+              <label v-for="s in PURGE_STATUSES" :key="s" class="flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" class="checkbox checkbox-xs checkbox-error"
+                  :value="s" v-model="purge.statuses" />
+                <span class="font-mono">{{ s }}</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Preview result -->
+          <div v-if="purge.previewCount !== null"
+            class="rounded bg-error/10 border border-error/30 px-3 py-2 font-mono">
+            <span class="text-error font-bold">{{ purge.previewCount }}</span>
+            event{{ purge.previewCount !== 1 ? 's' : '' }} match — will be permanently deleted
+          </div>
+          <p v-if="purge.error" class="text-error font-mono text-xs">{{ purge.error }}</p>
+        </div>
+
+        <div class="modal-action gap-2 mt-4">
+          <form method="dialog">
+            <button class="btn btn-xs btn-ghost font-mono" @click="resetPurge">CANCEL</button>
+          </form>
+          <button class="btn btn-xs btn-outline font-mono"
+            :disabled="purge.working"
+            @click="previewPurge">
+            <span v-if="purge.working && purge.previewCount === null" class="loading loading-spinner loading-xs"></span>
+            PREVIEW
+          </button>
+          <button class="btn btn-xs btn-error font-mono"
+            :disabled="purge.working || purge.previewCount === null || purge.previewCount === 0"
+            @click="doPurge">
+            <span v-if="purge.working && purge.previewCount !== null" class="loading loading-spinner loading-xs"></span>
+            DELETE {{ purge.previewCount ?? '' }}
+          </button>
+        </div>
+      </div>
+      <form method="dialog" class="modal-backdrop"><button @click="resetPurge">close</button></form>
+    </dialog>
+
     <!-- ── Clip player modal ───────────────────────────────────────────────── -->
     <dialog ref="clipModal" class="modal" @close="stopClip">
       <div class="modal-box max-w-3xl p-0 overflow-hidden bg-black">
@@ -321,7 +424,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { eventsApi, type EventRead } from '@/api/client'
 import { useEventsStore } from '@/stores/events'
@@ -331,6 +434,7 @@ import { useAuthStore } from '@/stores/auth'
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
 const token = computed(() => auth.token)
+const canDelete = computed(() => auth.role === 'SUPERADMIN' || auth.role === 'ADMIN')
 
 // ── Snapshot modal ────────────────────────────────────────────────────────────
 const snapshotModal = ref<HTMLDialogElement | null>(null)
@@ -449,6 +553,104 @@ async function escalate(ev: EventRead) {
 async function ackAll() {
   const targets = rows.value.filter(e => e.status === 'NEW')
   await Promise.allSettled(targets.map(e => ack(e)))
+}
+
+// ── Delete single ─────────────────────────────────────────────────────────────
+const deleteModal  = ref<HTMLDialogElement | null>(null)
+const deleteTarget = ref<EventRead | null>(null)
+const deleteWorking = ref(false)
+
+function confirmDeleteOne(ev: EventRead) {
+  deleteTarget.value = ev
+  deleteModal.value?.showModal()
+}
+
+async function doDeleteOne() {
+  if (!deleteTarget.value) return
+  deleteWorking.value = true
+  try {
+    await eventsApi.deleteEvent(deleteTarget.value.id)
+    rows.value = rows.value.filter(r => r.id !== deleteTarget.value!.id)
+    total.value = Math.max(0, total.value - 1)
+    eventsStore.remove(deleteTarget.value.id)
+    deleteModal.value?.close()
+  } catch (e: any) {
+    alert(e?.message ?? 'Delete failed')
+  } finally {
+    deleteWorking.value = false
+    deleteTarget.value = null
+  }
+}
+
+// ── Purge modal ────────────────────────────────────────────────────────────────
+const PURGE_STATUSES = ['NEW', 'ACKNOWLEDGED', 'SILENCED', 'ESCALATED']
+const purgeModal = ref<HTMLDialogElement | null>(null)
+
+const purge = reactive({
+  days: 30,
+  statuses: ['ACKNOWLEDGED', 'SILENCED'] as string[],
+  previewCount: null as number | null,
+  working: false,
+  error: '',
+})
+
+const purgeBeforeDt = computed(() => {
+  const d = new Date()
+  d.setDate(d.getDate() - purge.days)
+  return d
+})
+
+function openPurgeModal() {
+  resetPurge()
+  purgeModal.value?.showModal()
+}
+
+function resetPurge() {
+  purge.days = 30
+  purge.statuses = ['ACKNOWLEDGED', 'SILENCED']
+  purge.previewCount = null
+  purge.working = false
+  purge.error = ''
+}
+
+async function previewPurge() {
+  purge.working = true
+  purge.error = ''
+  purge.previewCount = null
+  try {
+    const res = await eventsApi.purge({
+      before_dt: purgeBeforeDt.value.toISOString(),
+      statuses: purge.statuses.length ? purge.statuses : null,
+      dry_run: true,
+    })
+    purge.previewCount = res.deleted
+  } catch (e: any) {
+    purge.error = e?.message ?? 'Preview failed'
+  } finally {
+    purge.working = false
+  }
+}
+
+async function doPurge() {
+  purge.working = true
+  purge.error = ''
+  try {
+    const res = await eventsApi.purge({
+      before_dt: purgeBeforeDt.value.toISOString(),
+      statuses: purge.statuses.length ? purge.statuses : null,
+      dry_run: false,
+    })
+    purgeModal.value?.close()
+    resetPurge()
+    await load()   // refresh table
+    eventsStore.fetch()  // refresh bell count
+    // brief success toast via title bar (no toast lib needed)
+    alert(`${res.deleted} event(s) purged successfully.`)
+  } catch (e: any) {
+    purge.error = e?.message ?? 'Purge failed'
+  } finally {
+    purge.working = false
+  }
 }
 
 // ── Time ──────────────────────────────────────────────────────────────────────

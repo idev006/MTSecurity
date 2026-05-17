@@ -53,8 +53,16 @@ export const useEventsStore = defineStore('events', () => {
     if (ev) ev.status = 'ESCALATED'
   }
 
+  function remove(id: number) {
+    events.value = events.value.filter(e => e.id !== id)
+  }
+
+  async function fetch() {
+    return fetchRecent()
+  }
+
   return {
     events, loading, error, newCount, recentAlerts, latestAlert,
-    fetchRecent, prependAlert, acknowledge, ackAll, silence, escalate,
+    fetchRecent, fetch, prependAlert, acknowledge, ackAll, silence, escalate, remove,
   }
 })

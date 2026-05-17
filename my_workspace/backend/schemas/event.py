@@ -57,3 +57,16 @@ class AlertEscalateRequest(BaseModel):
 
 class AlertNoteCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=4096)
+
+
+class EventPurgeRequest(BaseModel):
+    """Filter for bulk event purge.  All fields optional (omit = no restriction)."""
+    before_dt: datetime | None = None
+    camera_id: int | None = None
+    statuses: list[str] | None = None    # e.g. ["ACKNOWLEDGED","SILENCED"]
+    dry_run: bool = False                 # True → count only, no deletion
+
+
+class EventPurgeResponse(BaseModel):
+    deleted: int
+    dry_run: bool

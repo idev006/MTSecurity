@@ -53,6 +53,7 @@ _PERMISSIONS: dict[str, set[str]] = {
 
     # Events & Alerts
     "events:read":          {Role.SUPERADMIN, Role.ADMIN, Role.OPERATOR, Role.AUDITOR},
+    "events:delete":        {Role.SUPERADMIN, Role.ADMIN},
     "alerts:acknowledge":   {Role.SUPERADMIN, Role.ADMIN, Role.OPERATOR},
     "alerts:silence":       {Role.SUPERADMIN, Role.ADMIN},
     "alerts:escalate":      {Role.SUPERADMIN, Role.ADMIN, Role.OPERATOR},

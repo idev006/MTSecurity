@@ -152,6 +152,17 @@ export const camerasApi = {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
+export interface EventPurgeRequest {
+  before_dt?: string | null
+  camera_id?: number | null
+  statuses?: string[] | null
+  dry_run?: boolean
+}
+export interface EventPurgeResponse {
+  deleted: number
+  dry_run: boolean
+}
+
 export const eventsApi = {
   list: (params?: Record<string, string | number>) => {
     const qs = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : ''
@@ -164,6 +175,9 @@ export const eventsApi = {
     post<void>(`/events/${id}/silence`, { duration_seconds }),
   escalate: (id: number, reason: string) =>
     post<void>(`/events/${id}/escalate`, { reason }),
+  deleteEvent: (id: number) => del(`/events/${id}`),
+  purge: (body: EventPurgeRequest) =>
+    post<EventPurgeResponse>('/events/purge', body),
 }
 
 // ── Zones ─────────────────────────────────────────────────────────────────────
