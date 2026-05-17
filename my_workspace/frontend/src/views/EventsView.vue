@@ -341,7 +341,7 @@
           <label class="flex flex-col gap-1">
             <span class="font-mono opacity-50">AGE FILTER</span>
             <div class="flex items-center gap-2">
-              <input type="range" min="0" max="365" v-model.number="purge.days"
+              <input type="range" min="0" max="45" v-model.number="purge.days"
                 class="range range-xs range-error flex-1" />
               <span class="font-mono font-bold w-14 text-right">
                 {{ purge.days === 0 ? 'ALL' : purge.days + 'd' }}
