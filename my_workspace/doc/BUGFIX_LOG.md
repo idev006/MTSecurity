@@ -385,19 +385,292 @@ EventsView → <video> player modal
 | `backend/ai/tracker.py` | BUG-009 |
 | `backend/ingestion/camera_thread.py` | BUG-010, FEAT-003 |
 | `backend/ingestion/camera_manager.py` | FEAT-003 |
-| `backend/ingestion/clip_buffer.py` | FEAT-003 (NEW) |
-| `backend/alerts/alert_manager.py` | FEAT-003 |
-| `backend/api/routers/events.py` | FEAT-003 |
+| `backend/ingestion/clip_buffer.py` | BUG-011, FEAT-003 (NEW) |
+| `backend/alerts/alert_manager.py` | BUG-011, FEAT-003 |
+| `backend/config.py` | BUG-011 |
+| `backend/api/routers/events.py` | FEAT-003, FEAT-004 |
+| `backend/api/routers/cameras.py` | BUG-015, FEAT-005, FEAT-006 |
+| `backend/api/routers/zones.py` | FEAT-006 (NEW endpoints) |
+| `backend/api/routers/rules.py` | FEAT-006 (NEW endpoints) |
 | `backend/api/routers/users.py` | FEAT-002 |
-| `backend/api/app.py` | FEAT-003 |
+| `backend/api/deps.py` | BUG-015 |
+| `backend/api/middleware/audit.py` | BUG-015 |
+| `backend/auth/permissions.py` | FEAT-004 |
+| `backend/schemas/event.py` | FEAT-004 |
+| `backend/api/app.py` | BUG-011, FEAT-003 |
+| `backend/.env` | BUG-011 |
 | `frontend/src/components/RuleLogicBuilder.vue` | BUG-003, BUG-005 |
-| `frontend/src/views/ZonesView.vue` | BUG-003, BUG-006, BUG-007 |
+| `frontend/src/views/ZonesView.vue` | BUG-003, BUG-006, BUG-007, FEAT-006 |
 | `frontend/src/views/UsersView.vue` | FEAT-001 (NEW) |
 | `frontend/src/views/SettingsView.vue` | FEAT-002 |
-| `frontend/src/views/EventsView.vue` | FEAT-003 |
-| `frontend/src/api/client.ts` | FEAT-001 |
-| `frontend/src/router/index.ts` | FEAT-001 |
+| `frontend/src/views/EventsView.vue` | BUG-012, BUG-013, BUG-014, FEAT-003, FEAT-004 |
+| `frontend/src/stores/cameras.ts` | FEAT-005 |
+| `frontend/src/stores/zones.ts` | FEAT-006 |
+| `frontend/src/stores/toast.ts` | BUG-014 |
+| `frontend/src/api/client.ts` | FEAT-001, FEAT-004, FEAT-005, FEAT-006 |
+| `frontend/src/router/index.ts` | BUG-013, FEAT-001 |
 | `frontend/src/components/AppLayout.vue` | FEAT-001 |
+
+---
+
+### BUG-011 — Video clip เล่นใน browser แสดง 0 วินาที / ไม่ seek ได้
+
+**Severity:** High  
+**Component:** Backend — Clip Buffer
+
+**อาการ:**  
+เปิด clip ใน browser player แล้วแสดง duration = 0:00 และไม่สามารถ seek ได้ แม้ไฟล์จะมีขนาดปกติ
+
+**สาเหตุ:**  
+OpenCV `cv2.VideoWriter` กับ `mp4v` codec เขียน `moov atom` (metadata ที่บอก duration + index) ไว้ที่ **ท้ายไฟล์** แทนต้น Browser ต้องโหลดไฟล์ทั้งหมดก่อนถึงจะรู้ duration และ seek ได้ ซึ่งไม่ทำงานกับ HTTP streaming
+
+**วิธีแก้:**  
+หลัง `cv2.VideoWriter` เขียนเสร็จ ให้รัน `ffmpeg -movflags +faststart` เพื่อย้าย `moov atom` ไปต้นไฟล์ พร้อม re-encode เป็น `libx264` และ scale เป็น 854×480 (YouTube 16:9 landscape)
+
+```python
+def _apply_faststart(src, ffmpeg_exe, out_width, out_height):
+    scale = f"scale={out_width}:{out_height}:force_original_aspect_ratio=decrease"
+    pad   = f"pad={out_width}:{out_height}:(ow-iw)/2:(oh-ih)/2"
+    subprocess.run([
+        ffmpeg_exe, "-y", "-i", str(src),
+        "-vf", f"{scale},{pad}",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-movflags", "+faststart",
+        str(dst),
+    ], check=True, ...)
+```
+
+FFmpeg path ผู้ใช้ตั้งได้ใน `.env`:
+```
+FFMPEG_PATH=D:\libs\ffmpeg\bin\ffmpeg.exe
+CLIP_WIDTH=854
+CLIP_HEIGHT=480
+```
+
+**ไฟล์ที่แก้:**
+- `backend/ingestion/clip_buffer.py` — เพิ่ม `_resolve_ffmpeg()`, `_apply_faststart()`, อัพเดต `save_clip()`
+- `backend/config.py` — เพิ่ม `ffmpeg_path`, `clip_width`, `clip_height`
+- `backend/alerts/alert_manager.py` — ส่ง ffmpeg params ไป `save_clip()`
+- `backend/api/app.py` — pass ffmpeg config ไปยัง AlertManager
+- `backend/.env` — เพิ่ม `FFMPEG_PATH`, `CLIP_WIDTH`, `CLIP_HEIGHT`
+
+---
+
+### FEAT-004 — Admin Event Deletion (Single + Bulk Purge)
+
+**Component:** Backend + Frontend — Events
+
+**เพิ่ม:**
+
+**Backend:**
+- `backend/auth/permissions.py` — เพิ่ม `"events:delete": {Role.SUPERADMIN, Role.ADMIN}`
+- `backend/schemas/event.py` — เพิ่ม `EventPurgeRequest`, `EventPurgeResponse`
+- `backend/api/routers/events.py`:
+  - `DELETE /events/{event_id}` — ลบ snapshot + clip files บน disk และ DB row
+  - `POST /events/purge` — bulk delete ตาม filter (before_dt, camera_id, statuses) พร้อม `dry_run` mode
+
+**Frontend:**
+- `frontend/src/api/client.ts` — เพิ่ม `eventsApi.deleteEvent()`, `eventsApi.purge()`
+- `frontend/src/views/EventsView.vue`:
+  - ปุ่มลบ (ซ่อนถ้าไม่ใช่ ADMIN+) พร้อม confirmation modal แสดง event details
+  - Purge modal: slider 0–45 วัน, checkboxes เลือก status, ปุ่ม Preview (dry_run) ก่อนลบจริง
+  - Toast notification แจ้งผลหลังลบ
+
+---
+
+### BUG-012 — Bulk purge ลบไม่ได้ — filter ตั้ง default แคบเกินไป
+
+**Severity:** High  
+**Component:** Frontend — Events View
+
+**อาการ:**  
+กดปุ่ม Bulk Delete แล้ว preview แสดง 0 items แม้จะมี events อยู่จริงหลายรายการ
+
+**สาเหตุ:**  
+Default filter: `days=30` + statuses `[ACKNOWLEDGED, SILENCED]` ทำให้ events ใหม่ที่มีสถานะ `NEW` และเกิดขึ้นล่าสุดไม่ตรงเงื่อนไข
+
+**วิธีแก้:**  
+เปลี่ยน default เป็น `days=0` (ทุกช่วงเวลา) และ `statuses=[]` (ทุกสถานะ) เพื่อให้ filter รวม events ทุกรายการโดย default
+
+```typescript
+// เดิม
+const purgeDays = ref(30)
+const purgeStatuses = ref(['ACKNOWLEDGED', 'SILENCED'])
+
+// ใหม่
+const purgeDays = ref(0)
+const purgeStatuses = ref<string[]>([])
+```
+
+Backend รองรับ `statuses=[]` = ไม่กรองตาม status (ลบทุกสถานะ)
+
+**ไฟล์ที่แก้:**
+- `frontend/src/views/EventsView.vue` — ค่า default ของ purgeDays และ purgeStatuses
+- `backend/api/routers/events.py` — ตรวจ `if body.statuses` ก่อน apply filter
+
+---
+
+### BUG-013 — ปุ่มลบ (Delete) หายไปหลัง page refresh
+
+**Severity:** High  
+**Component:** Frontend — Auth Store + Router
+
+**อาการ:**  
+ปุ่มลบ event แสดงผลถูกต้องหลัง login แต่พอ refresh page ปุ่มหายไปทันที แม้ยังอยู่ในสถานะ ADMIN
+
+**สาเหตุ:**  
+`auth.user` เก็บใน Pinia (in-memory) — reset เป็น `null` ทุกครั้งที่ refresh `auth.role` จึง return `''` ทำให้ `canDelete = computed(() => auth.role === 'ADMIN' || ...)` เป็น false
+
+`router.beforeEach` มี guard `if (!auth.user) await auth.fetchMe()` แต่เงื่อนไขเดิมรัน fetchMe **เฉพาะ route ที่มี `meta.roles`** (role-guarded routes) ทำให้ EventsView ที่ require auth แต่ไม่ใช่ role-guarded ไม่ถูก hydrate
+
+**วิธีแก้:**  
+เปลี่ยน guard ให้รัน `fetchMe()` สำหรับ **ทุก route ที่ `requiresAuth`** ไม่ใช่แค่ role-guarded
+
+```typescript
+// เดิม
+if (token && to.meta.roles) {
+  if (!auth.user) await auth.fetchMe()
+  ...
+}
+
+// ใหม่
+if (token && to.meta.requiresAuth) {
+  if (!auth.user) await auth.fetchMe()   // hydrate ทุก auth route
+  const allowedRoles = to.meta.roles as string[] | undefined
+  if (allowedRoles && !allowedRoles.includes(auth.role))
+    return { name: 'dashboard' }
+}
+```
+
+**ไฟล์ที่แก้:**
+- `frontend/src/router/index.ts` — `router.beforeEach` hydration guard
+
+---
+
+### BUG-014 — Toast notifications ไม่แสดง (`success()`, `error()` silent)
+
+**Severity:** High  
+**Component:** Frontend — Toast Store
+
+**อาการ:**  
+เรียก `toast.success(...)` หรือ `toast.error(...)` แล้วไม่มี toast แสดงบนหน้าจอเลย ทั้งๆ ที่ไม่มี error ใน console
+
+**สาเหตุ:**  
+`toast.ts` store เปิดเผยเฉพาะ `push()` method เดิม แต่ component หลายแห่ง (EventsView, UsersView) เรียก `toast.success()`, `toast.error()`, `toast.warning()`, `toast.info()` ซึ่งไม่เคย implement ไว้
+
+**วิธีแก้:**  
+เพิ่ม convenience methods ใน `toast.ts`:
+
+```typescript
+function success(title: string, message?: string) {
+  push({ type: 'success', title, message: message ?? '' })
+}
+function error(title: string, message?: string) {
+  push({ type: 'error', title, message: message ?? '' })
+}
+function warning(title: string, message?: string) { ... }
+function info(title: string, message?: string) { ... }
+
+return { toasts, push, remove, success, error, warning, info }
+```
+
+**ไฟล์ที่แก้:**
+- `frontend/src/stores/toast.ts` — เพิ่ม `success()`, `error()`, `warning()`, `info()`
+
+---
+
+### BUG-015 — AuditMiddleware บันทึก actor เป็น "anonymous" เสมอ
+
+**Severity:** Medium  
+**Component:** Backend — Audit Middleware + Auth Deps
+
+**อาการ:**  
+ทุก audit log entry มี `actor = "anonymous"` แม้จะ login อยู่
+
+**สาเหตุ:**  
+`AuditMiddleware.dispatch()` อ่าน `request.state.user` แต่ `get_current_user()` dependency ไม่เคย set ค่านี้ไว้ — `request.state.user` จึงเป็น `None` เสมอ
+
+**วิธีแก้:**  
+เพิ่ม `request.state.user = user` ใน `get_current_user()` ก่อน return
+
+```python
+# deps.py
+request.state.user = user   # ← expose ให้ AuditMiddleware อ่านได้
+return user
+```
+
+ปรับปรุง `AuditMiddleware` ให้ parse sub-action จาก URL path เพื่อให้ action name descriptive ขึ้น:
+```python
+# /api/v1/cameras/5/enable  →  action = "cameras.enable"
+# /api/v1/cameras  (POST)   →  action = "cameras.post"
+if resource and sub_action:
+    action = f"{resource}.{sub_action}"
+elif resource:
+    action = f"{resource}.{request.method.lower()}"
+```
+
+**ไฟล์ที่แก้:**
+- `backend/api/deps.py` — เพิ่ม `request.state.user = user`
+- `backend/api/middleware/audit.py` — parse sub-action จาก URL
+
+---
+
+### FEAT-005 — Audit Trail สำหรับ Camera Enable/Disable
+
+**Component:** Backend + Frontend — Cameras
+
+**เพิ่ม:**
+
+**Backend:**
+- `backend/api/routers/cameras.py`:
+  - `POST /cameras/{id}/enable` — เปิดกล้อง + บันทึก AuditLog
+  - `POST /cameras/{id}/disable` — ปิดกล้อง + บันทึก AuditLog
+  - Helper `_set_active()` — เขียน explicit `AuditLog` entry (`action=camera.enable/disable`) พร้อม JSON detail (`previous_is_active`, `new_is_active`, `camera_name`, `source_type`)
+
+**Frontend:**
+- `frontend/src/api/client.ts` — เพิ่ม `camerasApi.enable(id)`, `camerasApi.disable(id)`
+- `frontend/src/stores/cameras.ts` — `setActive()` เรียก endpoint ใหม่แทน generic PATCH
+
+---
+
+### FEAT-006 — Cascade Enable/Disable: Camera → Zone → Rule
+
+**Component:** Backend + Frontend — Cameras / Zones / Rules
+
+**เพิ่ม:**
+
+เมื่อ enable/disable node หนึ่ง ระบบจะ cascade `is_active` ลงไปยัง children ทุกตัวใน **single DB transaction**:
+
+```
+Camera.enable/disable
+  └─ Zone.is_active = same  (ทุก zone ของ camera นั้น)
+       └─ Rule.is_active = same  (ทุก rule ของ zone นั้น)
+
+Zone.enable/disable
+  └─ Rule.is_active = same  (ทุก rule ของ zone นั้น)
+
+Rule.enable/disable  (leaf — ไม่มี cascade)
+```
+
+หลัง commit ทุก entity ที่เปลี่ยน: `config_svc.invalidate()` + `config_svc.notify()` เพื่อให้ `RuleEngine` รับ `CONFIG_CHANGED` ทันที ไม่ต้อง restart
+
+**Backend:**
+- `cameras.py` — `_set_active()` load zones+rules, bulk update, notify per entity, AuditLog บันทึก `cascaded_zones` + `cascaded_rules`
+- `zones.py` — เพิ่ม `POST /zones/{id}/enable|disable` + `_zone_set_active()` cascade rules
+- `rules.py` — เพิ่ม `POST /rules/{id}/enable|disable` (leaf)
+
+**Frontend:**
+- `client.ts` — เพิ่ม `zonesApi.enable/disable`, `rulesApi.enable/disable`
+- `stores/zones.ts` — `patchZone()` delegate ไปยัง `setZoneActive()` เมื่อ field เดียวคือ `is_active`; cascade อัพเดต local rules array
+- `ZonesView.vue` — `toggleZone()` เรียก enable/disable endpoint + mirror cascade ใน local rules; `toggleRule()` เรียก dedicated endpoint
+
+**ไฟล์ที่แก้:**
+- `backend/api/routers/cameras.py`
+- `backend/api/routers/zones.py` (NEW endpoints)
+- `backend/api/routers/rules.py` (NEW endpoints)
+- `frontend/src/api/client.ts`
+- `frontend/src/stores/zones.ts`
+- `frontend/src/views/ZonesView.vue`
 
 ---
 
