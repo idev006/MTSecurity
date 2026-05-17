@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import sys
+from datetime import datetime, timezone
 
 from cryptography.fernet import Fernet
 from fastapi import APIRouter, HTTPException, Request, status
@@ -8,6 +10,7 @@ from sqlalchemy import select
 
 from api.deps import CurrentUser, DBDep, require
 from ingestion.webcam_enumerator import EnumeratedDevice, enumerate_webcams
+from models.audit_log import AuditLog
 from models.camera import Camera
 from schemas.camera import CameraCreate, CameraRead, CameraStatus, CameraUpdate, WebcamDevice
 
@@ -151,6 +154,73 @@ async def delete_camera(camera_id: int, request: Request, db: DBDep, user: Curre
     await config_svc.notify("camera", camera_id, {"deleted": True}, actor=user.username)
     request.app.state.cam_manager.stop_camera(camera_id)
     logger.info("Camera deleted: id=%d by=%s", camera_id, user.username)
+
+
+# ── Enable / Disable ─────────────────────────────────────────────────────────
+
+async def _set_active(
+    camera_id: int,
+    active: bool,
+    request: Request,
+    db: DBDep,
+    user: CurrentUser,
+) -> CameraRead:
+    cam = await db.get(Camera, camera_id)
+    if cam is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Camera not found")
+
+    previous = cam.is_active
+    if previous == active:
+        return cam   # no-op — already in desired state
+
+    cam.is_active = active
+    await db.commit()
+    await db.refresh(cam)
+
+    # Sync running threads
+    cam_manager = request.app.state.cam_manager
+    if active:
+        await cam_manager.start_camera(camera_id)
+    else:
+        cam_manager.stop_camera(camera_id)
+
+    # Explicit audit log entry — more descriptive than generic middleware record
+    action = "camera.enable" if active else "camera.disable"
+    detail = json.dumps({
+        "camera_name": cam.name,
+        "source_type": cam.source_type,
+        "previous_is_active": previous,
+        "new_is_active": active,
+    })
+    db.add(AuditLog(
+        user_id=user.id,
+        actor=user.username,
+        action=action,
+        resource="cameras",
+        resource_id=camera_id,
+        detail=detail,
+        ip_address=request.client.host if request.client else None,
+        occurred_at=datetime.now(timezone.utc),
+    ))
+    await db.commit()
+
+    logger.info("Camera %d (%s) %s by %s",
+                camera_id, cam.name, "enabled" if active else "disabled", user.username)
+    return cam
+
+
+@router.post("/{camera_id}/enable", response_model=CameraRead,
+             dependencies=[require("cameras:update")])
+async def enable_camera(camera_id: int, request: Request, db: DBDep, user: CurrentUser) -> CameraRead:
+    """Enable a camera and start its capture thread."""
+    return await _set_active(camera_id, True, request, db, user)
+
+
+@router.post("/{camera_id}/disable", response_model=CameraRead,
+             dependencies=[require("cameras:update")])
+async def disable_camera(camera_id: int, request: Request, db: DBDep, user: CurrentUser) -> CameraRead:
+    """Disable a camera and stop its capture thread."""
+    return await _set_active(camera_id, False, request, db, user)
 
 
 # ── Status ────────────────────────────────────────────────────────────────────

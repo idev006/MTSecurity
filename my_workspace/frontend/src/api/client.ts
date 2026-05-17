@@ -148,6 +148,8 @@ export const camerasApi = {
   delete:       (id: number)               => del(`/cameras/${id}`),
   status:       (id: number)               => get<CameraStatus>(`/cameras/${id}/status`),
   listWebcams:  ()                          => get<WebcamDevice[]>('/cameras/webcams'),
+  enable:       (id: number)               => post<CameraRead>(`/cameras/${id}/enable`, {}),
+  disable:      (id: number)               => post<CameraRead>(`/cameras/${id}/disable`, {}),
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────

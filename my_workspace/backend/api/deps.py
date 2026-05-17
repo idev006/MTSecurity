@@ -59,6 +59,8 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
 
+    # Expose to AuditMiddleware (runs after endpoint; reads request.state.user)
+    request.state.user = user
     return user
 
 

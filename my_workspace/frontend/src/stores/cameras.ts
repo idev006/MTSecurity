@@ -93,9 +93,11 @@ export const useCamerasStore = defineStore('cameras', () => {
   }
 
   async function setActive(id: number, isActive: boolean): Promise<void> {
-    await camerasApi.update(id, { is_active: isActive })
-    const cam = cameras.value.find(c => c.id === id)
-    if (cam) cam.is_active = isActive
+    const updated = isActive
+      ? await camerasApi.enable(id)
+      : await camerasApi.disable(id)
+    const idx = cameras.value.findIndex(c => c.id === id)
+    if (idx !== -1) cameras.value[idx] = updated
   }
 
   async function updateCamera(id: number, body: { name?: string; location?: string; fps?: number }): Promise<CameraRead> {

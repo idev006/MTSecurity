@@ -31,16 +31,26 @@ class AuditMiddleware(BaseHTTPMiddleware):
             actor = user.username if user else "anonymous"
             user_id = user.id if user else None
 
+            # /api/v1/<resource>/<id>/<sub-action>
             path_parts = request.url.path.strip("/").split("/")
             resource = path_parts[2] if len(path_parts) > 2 else None
             resource_id: int | None = None
+            sub_action: str | None = None
             if len(path_parts) > 3:
                 try:
                     resource_id = int(path_parts[3])
+                    if len(path_parts) > 4:
+                        sub_action = path_parts[4]   # e.g. "enable", "disable"
                 except ValueError:
                     pass
 
-            action = f"{resource}.{request.method.lower()}" if resource else request.method.lower()
+            # Prefer descriptive sub-action over generic HTTP method
+            if resource and sub_action:
+                action = f"{resource}.{sub_action}"
+            elif resource:
+                action = f"{resource}.{request.method.lower()}"
+            else:
+                action = request.method.lower()
             ip = request.client.host if request.client else None
 
             factory = get_session_factory()
