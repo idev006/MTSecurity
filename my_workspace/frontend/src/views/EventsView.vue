@@ -429,10 +429,12 @@ import AppLayout from '@/components/AppLayout.vue'
 import { eventsApi, type EventRead } from '@/api/client'
 import { useEventsStore } from '@/stores/events'
 import { useAuthStore } from '@/stores/auth'
+import { useToastStore } from '@/stores/toast'
 
 
 const eventsStore = useEventsStore()
 const auth = useAuthStore()
+const toast = useToastStore()
 const token = computed(() => auth.token)
 const canDelete = computed(() => auth.role === 'SUPERADMIN' || auth.role === 'ADMIN')
 
@@ -575,7 +577,7 @@ async function doDeleteOne() {
     eventsStore.remove(deleteTarget.value.id)
     deleteModal.value?.close()
   } catch (e: any) {
-    alert(e?.message ?? 'Delete failed')
+    toast.error('Delete Failed', e?.message ?? 'Could not delete event')
   } finally {
     deleteWorking.value = false
     deleteTarget.value = null
@@ -642,10 +644,9 @@ async function doPurge() {
     })
     purgeModal.value?.close()
     resetPurge()
-    await load()   // refresh table
-    eventsStore.fetch()  // refresh bell count
-    // brief success toast via title bar (no toast lib needed)
-    alert(`${res.deleted} event(s) purged successfully.`)
+    await load()
+    eventsStore.fetch()
+    toast.success('Purged', `${res.deleted} event(s) deleted successfully`)
   } catch (e: any) {
     purge.error = e?.message ?? 'Purge failed'
   } finally {
