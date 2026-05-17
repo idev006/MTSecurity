@@ -337,22 +337,31 @@
 
         <div class="flex flex-col gap-3 text-xs">
 
-          <!-- Older than N days -->
+          <!-- Date range -->
           <label class="flex flex-col gap-1">
-            <span class="font-mono opacity-50">OLDER THAN (DAYS)</span>
+            <span class="font-mono opacity-50">AGE FILTER</span>
             <div class="flex items-center gap-2">
-              <input type="range" min="1" max="365" v-model.number="purge.days"
+              <input type="range" min="0" max="365" v-model.number="purge.days"
                 class="range range-xs range-error flex-1" />
-              <span class="font-mono font-bold w-8 text-right">{{ purge.days }}</span>
+              <span class="font-mono font-bold w-14 text-right">
+                {{ purge.days === 0 ? 'ALL' : purge.days + 'd' }}
+              </span>
             </div>
-            <span class="opacity-40 font-mono">
-              Before {{ purgeBeforeDt.toLocaleDateString() }}
+            <span class="opacity-40 font-mono text-[10px]">
+              {{ purge.days === 0
+                ? '⚠ ALL DATES — no age restriction'
+                : `Older than ${purge.days} days (before ${purgeBeforeDt!.toLocaleDateString()})` }}
             </span>
           </label>
 
           <!-- Status filter -->
           <div class="flex flex-col gap-1">
-            <span class="font-mono opacity-50">STATUS (empty = all)</span>
+            <div class="flex items-center gap-2">
+              <span class="font-mono opacity-50">STATUS</span>
+              <span class="font-mono text-[10px] opacity-40">
+                {{ purge.statuses.length === 0 ? '(all statuses)' : '' }}
+              </span>
+            </div>
             <div class="flex flex-wrap gap-2">
               <label v-for="s in PURGE_STATUSES" :key="s" class="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" class="checkbox checkbox-xs checkbox-error"
@@ -364,9 +373,15 @@
 
           <!-- Preview result -->
           <div v-if="purge.previewCount !== null"
-            class="rounded bg-error/10 border border-error/30 px-3 py-2 font-mono">
-            <span class="text-error font-bold">{{ purge.previewCount }}</span>
-            event{{ purge.previewCount !== 1 ? 's' : '' }} match — will be permanently deleted
+            :class="purge.previewCount > 0
+              ? 'rounded bg-error/10 border border-error/30 px-3 py-2 font-mono'
+              : 'rounded bg-base-200 border border-base-300 px-3 py-2 font-mono opacity-60'">
+            <span :class="purge.previewCount > 0 ? 'text-error font-bold' : ''">
+              {{ purge.previewCount }}
+            </span>
+            event{{ purge.previewCount !== 1 ? 's' : '' }} match
+            <span v-if="purge.previewCount > 0"> — will be permanently deleted</span>
+            <span v-else> — nothing to delete</span>
           </div>
           <p v-if="purge.error" class="text-error font-mono text-xs">{{ purge.error }}</p>
         </div>
@@ -424,7 +439,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted, reactive, watch } from 'vue'
 import AppLayout from '@/components/AppLayout.vue'
 import { eventsApi, type EventRead } from '@/api/client'
 import { useEventsStore } from '@/stores/events'
@@ -589,14 +604,16 @@ const PURGE_STATUSES = ['NEW', 'ACKNOWLEDGED', 'SILENCED', 'ESCALATED']
 const purgeModal = ref<HTMLDialogElement | null>(null)
 
 const purge = reactive({
-  days: 30,
-  statuses: ['ACKNOWLEDGED', 'SILENCED'] as string[],
+  days: 0,                        // 0 = all time (no date filter)
+  statuses: [] as string[],       // empty = all statuses
   previewCount: null as number | null,
   working: false,
   error: '',
 })
 
-const purgeBeforeDt = computed(() => {
+// null = no date filter (delete all regardless of age)
+const purgeBeforeDt = computed<Date | null>(() => {
+  if (purge.days === 0) return null
   const d = new Date()
   d.setDate(d.getDate() - purge.days)
   return d
@@ -608,11 +625,22 @@ function openPurgeModal() {
 }
 
 function resetPurge() {
-  purge.days = 30
-  purge.statuses = ['ACKNOWLEDGED', 'SILENCED']
+  purge.days = 0
+  purge.statuses = []
   purge.previewCount = null
   purge.working = false
   purge.error = ''
+}
+
+// Reset preview when filter changes so stale count doesn't remain
+watch(() => [purge.days, purge.statuses.length], () => { purge.previewCount = null })
+
+function _purgeBody(dry_run: boolean) {
+  return {
+    before_dt: purgeBeforeDt.value ? purgeBeforeDt.value.toISOString() : null,
+    statuses:  purge.statuses.length ? purge.statuses : null,
+    dry_run,
+  }
 }
 
 async function previewPurge() {
@@ -620,11 +648,7 @@ async function previewPurge() {
   purge.error = ''
   purge.previewCount = null
   try {
-    const res = await eventsApi.purge({
-      before_dt: purgeBeforeDt.value.toISOString(),
-      statuses: purge.statuses.length ? purge.statuses : null,
-      dry_run: true,
-    })
+    const res = await eventsApi.purge(_purgeBody(true))
     purge.previewCount = res.deleted
   } catch (e: any) {
     purge.error = e?.message ?? 'Preview failed'
@@ -637,11 +661,7 @@ async function doPurge() {
   purge.working = true
   purge.error = ''
   try {
-    const res = await eventsApi.purge({
-      before_dt: purgeBeforeDt.value.toISOString(),
-      statuses: purge.statuses.length ? purge.statuses : null,
-      dry_run: false,
-    })
+    const res = await eventsApi.purge(_purgeBody(false))
     purgeModal.value?.close()
     resetPurge()
     await load()
