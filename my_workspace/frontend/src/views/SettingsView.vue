@@ -304,12 +304,46 @@
                 </select>
               </div>
 
+              <!-- Clip Pre-seconds -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">บันทึกก่อน detect</p>
+                  <p class="text-xs opacity-50 mt-0.5">จำนวนวินาทีที่บันทึกไว้ก่อนเกิดเหตุการณ์</p>
+                </div>
+                <select v-model="qualityForm.clip_pre_seconds"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option :value="2">2 วินาที</option>
+                  <option :value="5">5 วินาที (default)</option>
+                  <option :value="10">10 วินาที</option>
+                  <option :value="15">15 วินาที</option>
+                  <option :value="20">20 วินาที</option>
+                  <option :value="30">30 วินาที</option>
+                </select>
+              </div>
+
+              <!-- Clip Post-seconds -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">บันทึกหลัง detect</p>
+                  <p class="text-xs opacity-50 mt-0.5">จำนวนวินาทีที่บันทึกต่อเนื่องหลังเกิดเหตุการณ์</p>
+                </div>
+                <select v-model="qualityForm.clip_post_seconds"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option :value="2">2 วินาที</option>
+                  <option :value="5">5 วินาที (default)</option>
+                  <option :value="10">10 วินาที</option>
+                  <option :value="15">15 วินาที</option>
+                  <option :value="20">20 วินาที</option>
+                  <option :value="30">30 วินาที</option>
+                </select>
+              </div>
+
               <div class="alert alert-info py-2 text-xs font-mono gap-2">
                 <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                 </svg>
-                <span>Stream Tier + Evidence Tier มีผลทันที — กล้องจะ restart สั้นๆ (~2–3 วินาที) เพื่อใช้ค่าใหม่ / Video CRF มีผลทันทีโดยไม่ขัดจังหวะ</span>
+                <span>Stream Tier + Evidence Tier มีผลทันที — กล้องจะ restart สั้นๆ (~2–3 วินาที) / CRF + Pre/Post มีผลทันทีกับ clip ถัดไป</span>
               </div>
 
               <div class="flex items-center gap-2">
@@ -590,7 +624,7 @@ async function saveTokenSettings() {
 const qualityLoading  = ref(false)
 const qualitySaving   = ref(false)
 const qualitySaveMsg  = ref('')
-const qualityForm     = ref({ stream_tier: 'MONITOR', evidence_tier: 'DETAIL', clip_crf: 23 })
+const qualityForm     = ref({ stream_tier: 'MONITOR', evidence_tier: 'DETAIL', clip_crf: 23, clip_pre_seconds: 5, clip_post_seconds: 5 })
 
 async function loadQualitySettings() {
   qualityLoading.value = true
@@ -599,7 +633,9 @@ async function loadQualitySettings() {
     for (const s of settings) {
       if (s.key === 'stream_tier'   && s.value) qualityForm.value.stream_tier   = s.value
       if (s.key === 'evidence_tier' && s.value) qualityForm.value.evidence_tier = s.value
-      if (s.key === 'clip_crf'      && s.value) qualityForm.value.clip_crf      = Number(s.value)
+      if (s.key === 'clip_crf'          && s.value) qualityForm.value.clip_crf          = Number(s.value)
+      if (s.key === 'clip_pre_seconds'  && s.value) qualityForm.value.clip_pre_seconds  = Number(s.value)
+      if (s.key === 'clip_post_seconds' && s.value) qualityForm.value.clip_post_seconds = Number(s.value)
     }
   } catch { /* use defaults */ }
   finally { qualityLoading.value = false }
@@ -609,9 +645,11 @@ async function saveQualitySettings() {
   qualitySaving.value = true
   qualitySaveMsg.value = ''
   try {
-    await systemApi.updateSetting('stream_tier',   qualityForm.value.stream_tier)
-    await systemApi.updateSetting('evidence_tier', qualityForm.value.evidence_tier)
-    await systemApi.updateSetting('clip_crf',      String(qualityForm.value.clip_crf))
+    await systemApi.updateSetting('stream_tier',       qualityForm.value.stream_tier)
+    await systemApi.updateSetting('evidence_tier',     qualityForm.value.evidence_tier)
+    await systemApi.updateSetting('clip_crf',          String(qualityForm.value.clip_crf))
+    await systemApi.updateSetting('clip_pre_seconds',  String(qualityForm.value.clip_pre_seconds))
+    await systemApi.updateSetting('clip_post_seconds', String(qualityForm.value.clip_post_seconds))
     qualitySaveMsg.value = '✓ บันทึกแล้ว'
     setTimeout(() => { qualitySaveMsg.value = '' }, 3000)
   } catch (e: any) {

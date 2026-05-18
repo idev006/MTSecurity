@@ -88,7 +88,8 @@ async def _lifespan(app: FastAPI):
     frame_buffer  = FrameBuffer()
     hires_buffer  = FrameBuffer()           # evidence frames for snapshot + clip
     stream_buffer = FrameBuffer()           # stream frames for MJPEG endpoint
-    clip_buffer   = ClipBuffer(max_frames=150)   # ~10 s @ 15 fps
+    # 600 frames ≈ 40 s @ 15 fps — accommodates any pre+post clip config up to 35 s total
+    clip_buffer   = ClipBuffer(max_frames=600)
     cam_manager = CameraManager(
         buffer=frame_buffer,
         config_svc=config_svc,

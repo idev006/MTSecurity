@@ -153,11 +153,18 @@ class ClipBuffer:
         out_width: int = 0,
         out_height: int = 0,
         crf: int = 23,
+        pre_seconds: float = 0,
     ) -> Path | None:
         """
         Write buffered frames to an MP4 file, then run FFmpeg post-processing:
           - scale to ``out_width × out_height`` (0/0 = keep original)
           - apply faststart so browsers can determine clip duration
+
+        ``pre_seconds`` trims the snapshot to at most ``pre_seconds * fps`` frames
+        from the END of the buffer.  Pass 0 to use all buffered frames (legacy).
+        Call this method after sleeping ``post_seconds`` so the buffer already
+        contains post-event footage — the trim then selects exactly:
+          [last pre_seconds of pre-event] + [post-event that arrived during sleep]
 
         Returns the Path on success, None if the buffer is empty or encoding fails.
         The file is named ``clip_<camera_id>_<event_id>.mp4``.
@@ -166,6 +173,14 @@ class ClipBuffer:
         if not frames:
             logger.warning("ClipBuffer: no frames for camera %d — skipping clip", camera_id)
             return None
+
+        # Trim to at most (pre_seconds * fps) frames from the tail of the buffer.
+        # At call time the buffer already contains post-event footage so the tail
+        # naturally includes [pre_seconds of pre-event] + [post-event frames].
+        if pre_seconds > 0:
+            max_frames = int(pre_seconds * fps)
+            if len(frames) > max_frames:
+                frames = frames[-max_frames:]
 
         try:
             import cv2

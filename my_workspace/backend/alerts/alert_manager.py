@@ -70,13 +70,18 @@ class AlertManager:
         bus.subscribe(MTPMsgType.RULE_TRIGGERED, self._on_rule_triggered)
         bus.subscribe(MTPMsgType.ALERT_ACKNOWLEDGED, self._on_alert_acknowledged)
 
-    async def _get_clip_crf(self, db) -> int:
-        """Read clip_crf from system_settings; fall back to default if not set."""
+    async def _get_clip_settings(self, db) -> tuple[int, float, float]:
+        """Return (crf, pre_seconds, post_seconds) from system_settings with fallbacks."""
         try:
-            row = await db.get(SystemSetting, "clip_crf")
-            return int(row.value) if row else self._default_clip_crf
+            crf_row  = await db.get(SystemSetting, "clip_crf")
+            pre_row  = await db.get(SystemSetting, "clip_pre_seconds")
+            post_row = await db.get(SystemSetting, "clip_post_seconds")
+            crf  = int(crf_row.value)  if crf_row  else self._default_clip_crf
+            pre  = float(pre_row.value)  if pre_row  else 5.0
+            post = float(post_row.value) if post_row else 5.0
+            return crf, pre, post
         except Exception:
-            return self._default_clip_crf
+            return self._default_clip_crf, 5.0, 5.0
 
     async def _on_rule_triggered(self, msg: MTPMessage) -> None:
         p = msg.payload
@@ -155,32 +160,30 @@ class AlertManager:
                 logger.warning("AlertManager: No frame found in buffer for camera %d. Buffer keys: %s",
                                camera_id, list(self._frame_buffer._slots.keys()))
             
-            # ── 3. Save video clip (ring buffer → MP4) ──────────────────────────
-            clip_path_name: str | None = None
-            if self._clip_buffer is not None and self._clip_dir is not None:
-                try:
-                    clip_crf = await self._get_clip_crf(db)
-                    clip_path = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        lambda: self._clip_buffer.save_clip(
-                            camera_id, event_id, self._clip_dir,
-                            ffmpeg_path=self._ffmpeg_path,
-                            out_width=self._clip_width,
-                            out_height=self._clip_height,
-                            crf=clip_crf,
-                        ),
-                    )
-                    if clip_path:
-                        event.clip_path = clip_path.name
-                        clip_path_name = clip_path.name
-                        logger.info("AlertManager: clip saved → %s", clip_path)
-                except Exception as e:
-                    logger.error("AlertManager: clip save failed for event %d: %s", event_id, e)
-
             await db.commit()
             logger.info(
-                "Event %d persisted — behavior=%s camera=%d snapshot=%s clip=%s",
-                event_id, behavior, camera_id, snapshot_path, clip_path_name,
+                "Event %d persisted — behavior=%s camera=%d snapshot=%s",
+                event_id, behavior, camera_id, snapshot_path,
+            )
+
+        # ── 3. Schedule deferred clip save (post-event buffer accumulation) ─────
+        clip_path_name: str | None = None
+        if self._clip_buffer is not None and self._clip_dir is not None:
+            async with self._session_factory() as db:
+                clip_crf, pre_secs, post_secs = await self._get_clip_settings(db)
+            asyncio.create_task(
+                self._save_clip_deferred(
+                    event_id=event_id,
+                    camera_id=camera_id,
+                    pre_seconds=pre_secs,
+                    post_seconds=post_secs,
+                    crf=clip_crf,
+                ),
+                name=f"clip-{event_id}",
+            )
+            logger.info(
+                "Event %d — clip deferred: pre=%.0fs post=%.0fs crf=%d",
+                event_id, pre_secs, post_secs, clip_crf,
             )
 
         # ── 4. Resolve camera name ────────────────────────────────────────────
@@ -235,6 +238,44 @@ class AlertManager:
             "Alert fired — event=%d rule=%s camera=%d severity=%s",
             event_id, rule_name, camera_id, severity,
         )
+
+    async def _save_clip_deferred(
+        self,
+        event_id: int,
+        camera_id: int,
+        pre_seconds: float,
+        post_seconds: float,
+        crf: int,
+    ) -> None:
+        """Wait post_seconds then save clip; ring buffer now contains pre+post footage."""
+        try:
+            await asyncio.sleep(post_seconds)
+            loop = asyncio.get_event_loop()
+            clip_path = await loop.run_in_executor(
+                None,
+                lambda: self._clip_buffer.save_clip(
+                    camera_id, event_id, self._clip_dir,
+                    ffmpeg_path=self._ffmpeg_path,
+                    out_width=self._clip_width,
+                    out_height=self._clip_height,
+                    crf=crf,
+                    pre_seconds=pre_seconds,
+                ),
+            )
+            if clip_path is None:
+                logger.warning("Event %d — clip save returned None", event_id)
+                return
+
+            async with self._session_factory() as db:
+                event = await db.get(Event, event_id)
+                if event:
+                    event.clip_path = clip_path.name
+                    await db.commit()
+
+            logger.info("Event %d — clip saved → %s (pre=%.0fs post=%.0fs)",
+                        event_id, clip_path, pre_seconds, post_seconds)
+        except Exception:
+            logger.exception("Event %d — deferred clip save failed", event_id)
 
     async def _on_alert_acknowledged(self, msg: MTPMessage) -> None:
         p = msg.payload

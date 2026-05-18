@@ -59,6 +59,18 @@ _ALLOWED: dict[str, dict] = {
         "min": 18,
         "max": 28,
     },
+    "clip_pre_seconds": {
+        "label": "Clip — บันทึกก่อน detect (วินาที)",
+        "type": int,
+        "min": 2,
+        "max": 30,
+    },
+    "clip_post_seconds": {
+        "label": "Clip — บันทึกหลัง detect (วินาที)",
+        "type": int,
+        "min": 2,
+        "max": 30,
+    },
 }
 
 

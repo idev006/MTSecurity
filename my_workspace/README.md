@@ -237,6 +237,8 @@ Settings ที่ปรับได้:
 | `stream_tier` | str | THUMBNAIL/MONITOR/DETAIL | มีผลทันที (กล้อง restart ~2-3 วิ) |
 | `evidence_tier` | str | MONITOR/DETAIL/EVIDENCE | มีผลทันที (กล้อง restart ~2-3 วิ) |
 | `clip_crf` | int | 18–28 | มีผลทันที (18=คมที่สุด) |
+| `clip_pre_seconds` | int | 2–30 วิ | มีผลทันทีกับ clip ถัดไป |
+| `clip_post_seconds` | int | 2–30 วิ | มีผลทันทีกับ clip ถัดไป |
 
 ### Other
 | Method | Endpoint | คำอธิบาย |

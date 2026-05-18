@@ -961,6 +961,42 @@ if det.get("confidence", 0.0) < conf_threshold:
 
 ---
 
+### FEAT-012 — Pre+Post Event Video Clip (Admin-Configurable)
+
+**Component:** Backend + Frontend — ClipBuffer / AlertManager / System Settings
+
+**เพิ่ม:**
+
+Video Clip หลักฐานบันทึกทั้งก่อนและหลังการ detect โดย Admin ตั้งค่าได้ มีผลทันทีกับ clip ถัดไป
+
+| Setting | ช่วงที่ยอมรับ | Default | ความหมาย |
+|---|---|---|---|
+| `clip_pre_seconds` | 2–30 วิ | 5 วิ | วินาทีที่บันทึกไว้ก่อนเกิด alert |
+| `clip_post_seconds` | 2–30 วิ | 5 วิ | วินาทีที่บันทึกต่อเนื่องหลัง alert |
+
+**สถาปัตยกรรม:**
+
+```
+CameraThread → ClipBuffer.put() ← ring buffer (600 frames ≈ 40 s @ 15 fps)
+
+เมื่อ RULE_TRIGGERED:
+  1. บันทึก Event + Snapshot ลง DB (เดิม)
+  2. asyncio.create_task(_save_clip_deferred(pre, post, crf))
+     └─ sleep(post_seconds) ← รอให้ buffer สะสม post-event footage
+     └─ ClipBuffer.save_clip(pre_seconds=pre) ← ตัดเอาแค่ tail ของ buffer
+        (tail ประกอบด้วย [pre_seconds ก่อนเกิด] + [post_seconds หลังเกิด])
+     └─ อัปเดต event.clip_path ใน DB
+```
+
+**ไฟล์ที่แก้:**
+- `backend/ingestion/clip_buffer.py` — เพิ่ม `pre_seconds` param ใน `save_clip()` สำหรับตัด tail ของ buffer
+- `backend/alerts/alert_manager.py` — `_get_clip_settings()` อ่าน `(crf, pre, post)` จาก DB; แทน inline clip save ด้วย `asyncio.create_task(_save_clip_deferred())`
+- `backend/api/routers/system.py` — เพิ่ม `clip_pre_seconds` + `clip_post_seconds` ใน `_ALLOWED`
+- `backend/api/app.py` — เพิ่ม `ClipBuffer(max_frames=600)` รองรับ pre+post สูงสุด 40 วิ
+- `frontend/src/views/SettingsView.vue` — เพิ่ม dropdown "บันทึกก่อน detect" + "บันทึกหลัง detect" ในการ์ด Evidence
+
+---
+
 ### FEAT-011 — Admin-Configurable Detection Defaults (Cooldown + Confidence)
 
 **Component:** Backend + Frontend — System Settings / Rule Engine
