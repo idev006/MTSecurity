@@ -232,8 +232,10 @@ Settings ที่ปรับได้:
 |---|---|---|---|
 | `jwt_access_token_expire_minutes` | int | 5–1440 | มีผลกับ token ใหม่ |
 | `jwt_refresh_token_expire_days` | int | 1–90 | มีผลกับ token ใหม่ |
-| `stream_tier` | str | THUMBNAIL/MONITOR/DETAIL | มีผลหลัง restart |
-| `evidence_tier` | str | MONITOR/DETAIL/EVIDENCE | มีผลหลัง restart |
+| `default_cooldown_seconds` | int | 10–600 | มีผลทันที — ห่างเท่าไหร่ก่อน object เดิม trigger ซ้ำ |
+| `default_confidence_threshold` | int | 10–95 (%) | มีผลทันที — AI ต้องมั่นใจขั้นต่ำเท่าไหรจึงนับ detection |
+| `stream_tier` | str | THUMBNAIL/MONITOR/DETAIL | มีผลทันที (กล้อง restart ~2-3 วิ) |
+| `evidence_tier` | str | MONITOR/DETAIL/EVIDENCE | มีผลทันที (กล้อง restart ~2-3 วิ) |
 | `clip_crf` | int | 18–28 | มีผลทันที (18=คมที่สุด) |
 
 ### Other

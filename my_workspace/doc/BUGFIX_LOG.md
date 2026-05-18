@@ -402,7 +402,7 @@ EventsView → <video> player modal
 | `frontend/src/components/RuleLogicBuilder.vue` | BUG-003, BUG-005 |
 | `frontend/src/views/ZonesView.vue` | BUG-003, BUG-006, BUG-007, FEAT-006 |
 | `frontend/src/views/UsersView.vue` | FEAT-001 (NEW) |
-| `frontend/src/views/SettingsView.vue` | FEAT-002 |
+| `frontend/src/views/SettingsView.vue` | FEAT-002, FEAT-007, FEAT-009, BUG-017, FEAT-010, FEAT-011 |
 | `frontend/src/views/EventsView.vue` | BUG-012, BUG-013, BUG-014, FEAT-003, FEAT-004 |
 | `frontend/src/stores/cameras.ts` | FEAT-005 |
 | `frontend/src/stores/zones.ts` | FEAT-006 |
