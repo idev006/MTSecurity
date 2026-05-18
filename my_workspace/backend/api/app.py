@@ -81,12 +81,14 @@ async def _lifespan(app: FastAPI):
         _rows = (await _db.execute(_sa_select(_SystemSetting))).scalars().all()
         _settings_map = {r.key: r.value for r in _rows}
     evidence_tier = _settings_map.get("evidence_tier", "DETAIL")
+    stream_tier   = _settings_map.get("stream_tier", "MONITOR")
     clip_crf = int(_settings_map.get("clip_crf", "23"))
-    logger.info("Evidence quality: tier=%s crf=%d", evidence_tier, clip_crf)
+    logger.info("Quality: stream=%s evidence=%s crf=%d", stream_tier, evidence_tier, clip_crf)
 
-    frame_buffer = FrameBuffer()
-    hires_buffer = FrameBuffer()           # high-res frames for snapshot + clip
-    clip_buffer = ClipBuffer(max_frames=150)   # ~10 s @ 15 fps
+    frame_buffer  = FrameBuffer()
+    hires_buffer  = FrameBuffer()           # evidence frames for snapshot + clip
+    stream_buffer = FrameBuffer()           # stream frames for MJPEG endpoint
+    clip_buffer   = ClipBuffer(max_frames=150)   # ~10 s @ 15 fps
     cam_manager = CameraManager(
         buffer=frame_buffer,
         config_svc=config_svc,
@@ -96,6 +98,8 @@ async def _lifespan(app: FastAPI):
         clip_buffer=clip_buffer,
         hires_buffer=hires_buffer,
         evidence_tier=evidence_tier,
+        stream_buffer=stream_buffer,
+        stream_tier=stream_tier,
     )
     await cam_manager.start_all()
     logger.info("CameraManager started — %d camera(s) active", cam_manager.active_count)
@@ -162,8 +166,9 @@ async def _lifespan(app: FastAPI):
     app.state.bus = bus
     app.state.ws_hub = hub
     app.state.cam_manager = cam_manager
-    app.state.frame_buffer = frame_buffer
-    app.state.hires_buffer = hires_buffer
+    app.state.frame_buffer  = frame_buffer
+    app.state.hires_buffer  = hires_buffer
+    app.state.stream_buffer = stream_buffer
     app.state.rule_engine = rule_engine
     app.state.alert_manager = alert_manager
 

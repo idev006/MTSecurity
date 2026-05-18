@@ -30,6 +30,12 @@ _ALLOWED: dict[str, dict] = {
         "min": 1,
         "max": 90,
     },
+    "stream_tier": {
+        "label": "คุณภาพ Live Stream (Pilot's Console)",
+        "type": str,
+        "options": ["THUMBNAIL", "MONITOR", "DETAIL"],
+        # Requires server restart to take effect (CameraThread reads at startup)
+    },
     "evidence_tier": {
         "label": "คุณภาพหลักฐาน (Snapshot & Clip)",
         "type": str,

@@ -186,6 +186,20 @@
             </div>
 
             <div v-else class="p-4 flex flex-col gap-4">
+              <!-- Stream Tier -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">ความละเอียด Live Stream</p>
+                  <p class="text-xs opacity-50 mt-0.5">Pilot's Console และทุกหน้าที่ดูกล้องแบบ realtime</p>
+                </div>
+                <select v-model="qualityForm.stream_tier"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option value="THUMBNAIL">THUMBNAIL — 320×180</option>
+                  <option value="MONITOR">MONITOR — 640×360</option>
+                  <option value="DETAIL">DETAIL — 1280×720</option>
+                </select>
+              </div>
+
               <!-- Evidence Tier -->
               <div class="flex items-center justify-between gap-4">
                 <div class="flex-1 min-w-0">
@@ -501,15 +515,16 @@ async function saveTokenSettings() {
 const qualityLoading  = ref(false)
 const qualitySaving   = ref(false)
 const qualitySaveMsg  = ref('')
-const qualityForm     = ref({ evidence_tier: 'DETAIL', clip_crf: 23 })
+const qualityForm     = ref({ stream_tier: 'MONITOR', evidence_tier: 'DETAIL', clip_crf: 23 })
 
 async function loadQualitySettings() {
   qualityLoading.value = true
   try {
     const settings = await systemApi.getSettings()
     for (const s of settings) {
+      if (s.key === 'stream_tier'   && s.value) qualityForm.value.stream_tier   = s.value
       if (s.key === 'evidence_tier' && s.value) qualityForm.value.evidence_tier = s.value
-      if (s.key === 'clip_crf' && s.value) qualityForm.value.clip_crf = Number(s.value)
+      if (s.key === 'clip_crf'      && s.value) qualityForm.value.clip_crf      = Number(s.value)
     }
   } catch { /* use defaults */ }
   finally { qualityLoading.value = false }
@@ -519,8 +534,9 @@ async function saveQualitySettings() {
   qualitySaving.value = true
   qualitySaveMsg.value = ''
   try {
+    await systemApi.updateSetting('stream_tier',   qualityForm.value.stream_tier)
     await systemApi.updateSetting('evidence_tier', qualityForm.value.evidence_tier)
-    await systemApi.updateSetting('clip_crf', String(qualityForm.value.clip_crf))
+    await systemApi.updateSetting('clip_crf',      String(qualityForm.value.clip_crf))
     qualitySaveMsg.value = '✓ บันทึกแล้ว'
     setTimeout(() => { qualitySaveMsg.value = '' }, 3000)
   } catch (e: any) {

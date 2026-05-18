@@ -312,8 +312,8 @@ async def mjpeg_stream(
     if payload.get("type") != "access":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong token type")
 
-    # ── Stream frames ─────────────────────────────────────────────────────────
-    frame_buffer = request.app.state.frame_buffer
+    # ── Stream frames — use stream_buffer (higher quality) if available ──────
+    frame_buffer = getattr(request.app.state, "stream_buffer", None) or request.app.state.frame_buffer
 
     async def generate():
         boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"

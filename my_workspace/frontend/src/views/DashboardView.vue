@@ -249,6 +249,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useCamerasStore } from '@/stores/cameras'
 import { useEventsStore } from '@/stores/events'
 import { useSystemStore } from '@/stores/system'
+import { relTime, fmtTime } from '@/utils/time'
 
 const cameras = useCamerasStore()
 const events  = useEventsStore()
@@ -262,20 +263,7 @@ async function ack(id: number) {
   finally { acking.value.delete(id) }
 }
 
-// ── Time ──────────────────────────────────────────────────────────────────
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function relTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1)  return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return fmtTime(iso)
-}
+// relTime + fmtTime imported from @/utils/time (parseUtcIso-based, UTC-correct)
 
 // ── Colors ────────────────────────────────────────────────────────────────
 function gaugeColor(pct: number) {

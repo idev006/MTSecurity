@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class EventRead(BaseModel):
@@ -23,6 +23,14 @@ class EventRead(BaseModel):
     acknowledged_by: str | None
 
     model_config = {"from_attributes": True}
+
+    @field_validator('occurred_at', 'acknowledged_at', mode='before')
+    @classmethod
+    def _attach_utc(cls, v):
+        # SQLite strips tzinfo on read — naive datetime here is always UTC
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
 
 
 class EventFilter(BaseModel):

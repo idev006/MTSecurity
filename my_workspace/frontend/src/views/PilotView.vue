@@ -406,6 +406,7 @@ import { useSystemStore } from '@/stores/system'
 import { useAuthStore } from '@/stores/auth'
 import { useZonesStore } from '@/stores/zones'
 import { UI_CONFIG } from '@/config/uiConfig'
+import { parseUtcIso } from '@/utils/time'
 
 const OVR = UI_CONFIG.overlay
 
@@ -626,7 +627,7 @@ function hasRecentAlert(cameraId: number): boolean {
   const currentMs = now.value
   const recent = events.events.find(e => e.camera_id === cameraId)
   if (!recent) return false
-  const ageSecs = (currentMs - new Date(recent.occurred_at).getTime()) / 1000
+  const ageSecs = (currentMs - parseUtcIso(recent.occurred_at).getTime()) / 1000
   return ageSecs < 3.0 // Flash for 3 seconds
 }
 
@@ -644,8 +645,7 @@ function hasActiveAlert(camId: number) {
 
 function fmtTime(iso: string) {
   if (!iso) return '--:--:--'
-  const normalized = iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z'
-  const d = new Date(normalized)
+  const d = parseUtcIso(iso)
   if (isNaN(d.getTime())) return iso
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }

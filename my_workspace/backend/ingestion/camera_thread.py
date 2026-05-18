@@ -60,12 +60,15 @@ class CameraThread(threading.Thread):
         clip_buffer: ClipBuffer | None = None,
         hires_buffer: FrameBuffer | None = None,
         evidence_tier: str = "DETAIL",
+        stream_buffer: FrameBuffer | None = None,
+        stream_tier: str = "MONITOR",
     ) -> None:
         super().__init__(name=f"cam-{camera_id}", daemon=True)
         self.camera_id = camera_id
         self._buffer = buffer
         self._clip_buffer = clip_buffer
         self._hires_buffer = hires_buffer
+        self._stream_buffer = stream_buffer
         self._state = state_reg
         self._bus = bus
         self._source_type = source_type
@@ -74,6 +77,7 @@ class CameraThread(threading.Thread):
         self._frame_interval = 1.0 / max(target_fps, 1.0)
         self._stop_event = threading.Event()
         self._evidence_tier = ResolutionTier(evidence_tier)
+        self._stream_tier = ResolutionTier(stream_tier)
         # Rolling FPS — exponential moving average over actual frame intervals
         self._fps_ema: float = 0.0
         self._fps_last_time: float = 0.0
@@ -177,6 +181,17 @@ class CameraThread(threading.Thread):
                     self._hires_buffer.put(f_hires)
                 if self._clip_buffer is not None:
                     self._clip_buffer.put(f_hires)
+
+            # Stream tier → MJPEG stream buffer (separate from AI + evidence)
+            if self._stream_buffer is not None:
+                if self._stream_tier == self._evidence_tier and need_hires:
+                    # Reuse already-encoded evidence frame if tiers match
+                    self._stream_buffer.put(f_hires)  # type: ignore[possibly-undefined]
+                else:
+                    jpeg_stream = encode_frame(frame, self._stream_tier)
+                    self._stream_buffer.put(
+                        Frame(camera_id=self.camera_id, data=jpeg_stream, width=w, height=h)
+                    )
 
             # Compute rolling FPS via exponential moving average
             now = time.monotonic()

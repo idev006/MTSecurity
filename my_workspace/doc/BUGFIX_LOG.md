@@ -410,8 +410,19 @@ EventsView → <video> player modal
 | `frontend/src/api/client.ts` | FEAT-001, FEAT-004, FEAT-005, FEAT-006 |
 | `frontend/src/router/index.ts` | BUG-013, FEAT-001 |
 | `backend/models/system_setting.py` | FEAT-007 (NEW) |
-| `backend/api/routers/system.py` | FEAT-007 (NEW) |
+| `backend/api/routers/system.py` | FEAT-007, FEAT-009, BUG-017 |
 | `frontend/src/components/AppLayout.vue` | FEAT-001, FEAT-008 |
+| `backend/ingestion/clip_buffer.py` | FEAT-009 |
+| `backend/ingestion/camera_thread.py` | FEAT-009, BUG-017 |
+| `backend/ingestion/camera_manager.py` | FEAT-009, BUG-017 |
+| `backend/alerts/alert_manager.py` | FEAT-009 |
+| `backend/api/app.py` | FEAT-009, BUG-017 |
+| `backend/schemas/event.py` | BUG-018 |
+| `frontend/src/utils/time.ts` | BUG-018 (NEW) |
+| `frontend/src/views/EventsView.vue` | BUG-018 |
+| `frontend/src/views/DashboardView.vue` | BUG-018 |
+| `frontend/src/views/PilotView.vue` | BUG-018 |
+| `frontend/src/views/CamerasView.vue` | BUG-018 |
 
 ---
 
@@ -743,6 +754,54 @@ async def logout(body: LogoutRequest, user: CurrentUser, ...):
 
 ---
 
+### FEAT-009 — Evidence Quality Upgrade (Snapshot & Clip)
+
+**Component:** Backend + Frontend — Ingestion / Alert Pipeline / System Settings
+
+**อาการเดิม:**  
+ภาพ snapshot และ video clip หลักฐานไม่ชัด เนื่องจาก `CameraThread` encode ทุก frame เป็น THUMBNAIL (320×180, JPEG q60) ก่อนเก็บลง buffer รวมถึง buffer ที่ใช้สำหรับ snapshot และ clip
+
+**สาเหตุ:**  
+Architecture เดิมใช้ buffer เดียวกัน (`frame_buffer`) ทั้งสำหรับ AI pipeline, streaming, และ evidence — โดย encode เป็น THUMBNAIL tier เพื่อลด bandwidth และการใช้ RAM เสมอ
+
+**วิธีแก้:**  
+แยก buffer 3 ชุดตาม purpose:
+- `frame_buffer` (THUMBNAIL 320×180 q60) — AI pipeline + streaming แบบเดิม
+- `hires_buffer` (DETAIL 1280×720 q85 default) — snapshot หลักฐาน  
+- `clip_buffer` (DETAIL 1280×720 q85 default) — video clip หลักฐาน
+
+**ค่าที่ Admin กำหนดได้ (Settings → ระบบ → คุณภาพหลักฐาน):**
+| Setting | ค่าที่ยอมรับ | Default |
+|---|---|---|
+| Evidence Tier | MONITOR (640×360) / DETAIL (1280×720) / EVIDENCE (ต้นฉบับ) | DETAIL |
+| Video CRF | 18–28 (ยิ่งต่ำยิ่งคมชัด) | 23 |
+
+หมายเหตุ: Evidence Tier มีผลหลัง restart server / Video CRF มีผลทันที
+
+**Backend:**
+- `ingestion/camera_thread.py` — encode 2 ชุดต่อ frame: THUMBNAIL → `frame_buffer`, evidence_tier → `hires_buffer` + `clip_buffer`
+- `ingestion/camera_manager.py` — รับ `hires_buffer` + `evidence_tier`, ส่งต่อ CameraThread, clean up เมื่อ stop
+- `alerts/alert_manager.py` — snapshot ดึงจาก `hires_buffer`; `clip_crf` อ่านจาก system_settings DB ทุกครั้ง
+- `ingestion/clip_buffer.py` — `save_clip()` + `_apply_faststart()` รับ `crf` param
+- `api/routers/system.py` — เพิ่ม `evidence_tier` (enum) + `clip_crf` (int 18–28) settings; `SystemSettingRead` เพิ่ม `type_hint`, `options`, `min`, `max` fields
+- `api/app.py` — สร้าง `hires_buffer`, อ่าน quality settings จาก DB ตอน startup, wire ทุก service
+
+**Frontend:**
+- `api/client.ts` — อัพเดต `SystemSetting` interface ให้รองรับ `type_hint`, `options`, `min`, `max`
+- `views/SettingsView.vue` — เพิ่ม card "คุณภาพหลักฐาน" (ADMIN+) พร้อม dropdown Evidence Tier + CRF
+
+**ไฟล์ที่แก้:**
+- `backend/ingestion/camera_thread.py`
+- `backend/ingestion/camera_manager.py`
+- `backend/alerts/alert_manager.py`
+- `backend/ingestion/clip_buffer.py`
+- `backend/api/routers/system.py`
+- `backend/api/app.py`
+- `frontend/src/api/client.ts`
+- `frontend/src/views/SettingsView.vue`
+
+---
+
 ### FEAT-008 — Signout Confirm Dialog
 
 **Component:** Frontend — AppLayout
@@ -752,6 +811,89 @@ async def logout(body: LogoutRequest, user: CurrentUser, ...):
 
 **ไฟล์ที่แก้:**
 - `frontend/src/components/AppLayout.vue` — เพิ่ม `<dialog>` modal + `logoutModal` ref + `handleLogout()` เปลี่ยนเป็นแค่ `showModal()` + `confirmLogout()` รัน logout จริง
+
+---
+
+## 2026-05-18
+
+---
+
+### BUG-017 — Pilot's Console วิดีโอ stream ไม่ชัด และ Admin ไม่สามารถตั้งค่าได้
+
+**Severity:** Medium  
+**Component:** Backend — MJPEG Stream / Ingestion
+
+**อาการ:**  
+หน้า Pilot's Console แสดงภาพ live stream ไม่ชัด (pixelated)
+
+**สาเหตุ:**  
+MJPEG stream endpoint (`GET /cameras/{id}/stream`) อ่านจาก `frame_buffer` ซึ่งเก็บ frame ที่ encode เป็น THUMBNAIL tier (320×180, JPEG q60) เท่านั้น เพราะ `frame_buffer` ออกแบบมาเพื่อ AI pipeline ที่ต้องการ frame เล็ก/เร็ว
+
+**วิธีแก้:**  
+เพิ่ม `stream_buffer` (FrameBuffer แยก) ที่ encode frame ที่ `stream_tier` (default MONITOR 640×360 q75) โดย `CameraThread` encode 3 ชุดต่อ frame (thumbnail + evidence + stream) ถ้า stream_tier ต่างกับ evidence_tier; MJPEG endpoint อ่านจาก `stream_buffer` แทน
+
+**ค่าที่ Admin กำหนดได้ (Settings → ระบบ):**
+| Setting | ค่าที่ยอมรับ | Default |
+|---|---|---|
+| Stream Tier | THUMBNAIL (320×180) / MONITOR (640×360) / DETAIL (1280×720) | MONITOR |
+
+มีผลหลัง restart server
+
+**ไฟล์ที่แก้:**
+- `backend/ingestion/camera_thread.py` — encode stream_tier → `stream_buffer`
+- `backend/ingestion/camera_manager.py` — pass `stream_buffer` + `stream_tier`
+- `backend/api/routers/cameras.py` — MJPEG stream อ่านจาก `stream_buffer`
+- `backend/api/routers/system.py` — เพิ่ม `stream_tier` setting
+- `backend/api/app.py` — สร้าง `stream_buffer`, อ่าน `stream_tier` จาก DB
+- `frontend/src/views/SettingsView.vue` — เพิ่ม Stream Tier ใน quality card
+
+---
+
+### BUG-018 — เวลา Events & Alerts แสดงผิด (ช้าไป 7 ชั่วโมง)
+
+**Severity:** High  
+**Component:** Backend — Schema Serialization + Frontend — Date Parsing
+
+**อาการ:**  
+เวลาใน Events list, Pilot's Console, Dashboard แสดงไม่ตรงกับเวลาจริง — event ที่เกิดตอน 17:30 น. (Bangkok) แสดงเป็น 10:30 น.
+
+**สาเหตุ:**  
+SQLite เก็บ datetime เป็น string แบบไม่มี timezone เมื่อ SQLAlchemy อ่านคืนจะได้ naive datetime (no `tzinfo`) Pydantic v2 serialize เป็น `"2026-05-18T10:30:00"` (ไม่มี `Z`) — browser ตีความ string ที่ไม่มี timezone suffix เป็น **local time** ตาม ECMAScript spec แต่ค่าจริงเป็น UTC → แสดงเวลาเร็วไป 7 ชั่วโมง (UTC+7)
+
+**วิธีแก้:**  
+สองชั้น:
+
+1. **Backend (root fix):** เพิ่ม `@field_validator` ใน `EventRead` schema ที่ attach `timezone.utc` ให้ naive datetime ก่อนที่ Pydantic จะ serialize → output เป็น `"2026-05-18T10:30:00+00:00"` ซึ่ง browser parse เป็น UTC ถูกต้อง
+
+2. **Frontend (defensive fix):** เพิ่ม helper `parseUtcIso()` ที่ normalize datetime string โดย append `Z` ถ้าไม่มี timezone suffix ใช้แทน `new Date(iso)` ในทุกที่ที่ parse `occurred_at` (EventsView, DashboardView, PilotView, CamerasView)
+
+```python
+# schemas/event.py
+@field_validator('occurred_at', 'acknowledged_at', mode='before')
+@classmethod
+def _attach_utc(cls, v):
+    if isinstance(v, datetime) and v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v
+```
+
+```typescript
+// utils/time.ts
+export function parseUtcIso(iso: string): Date {
+  if (!iso) return new Date(NaN)
+  // append Z if no timezone indicator — backend naive datetime = UTC
+  const normalized = /[Z+\-]\d*$/.test(iso) ? iso : iso + 'Z'
+  return new Date(normalized)
+}
+```
+
+**ไฟล์ที่แก้:**
+- `backend/schemas/event.py` — `@field_validator` attach UTC timezone
+- `frontend/src/utils/time.ts` (NEW) — `parseUtcIso()` helper
+- `frontend/src/views/EventsView.vue` — ใช้ `parseUtcIso()` ใน `relTime()` + `fmtTime()`
+- `frontend/src/views/DashboardView.vue` — ใช้ `parseUtcIso()` ใน `relTime()`
+- `frontend/src/views/PilotView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + `hasRecentAlert()`
+- `frontend/src/views/CamerasView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + age check
 
 ---
 

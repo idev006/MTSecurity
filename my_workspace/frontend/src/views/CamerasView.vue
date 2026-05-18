@@ -522,6 +522,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useEventsStore } from '@/stores/events'
 import { useZonesStore } from '@/stores/zones'
 import type { CameraRead, WebcamDevice } from '@/api/client'
+import { parseUtcIso, fmtTime } from '@/utils/time'
 
 const cameras = useCamerasStore()
 const auth = useAuthStore()
@@ -597,7 +598,7 @@ function recentAlertFor(cameraId: number) {
   const currentMs = now.value
   const recent = eventsStore.events.find(e => e.camera_id === cameraId)
   if (!recent) return null
-  const ageSecs = (currentMs - new Date(recent.timestamp).getTime()) / 1000
+  const ageSecs = (currentMs - parseUtcIso(recent.occurred_at ?? recent.timestamp).getTime()) / 1000
   return ageSecs < 3.0 ? recent : null
 }
 
@@ -743,9 +744,7 @@ async function submitWebcam() {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtTime(iso: string) {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
+// fmtTime imported from @/utils/time (parseUtcIso-based, UTC-correct)
 
 function dotColor(state?: string) {
   return {
