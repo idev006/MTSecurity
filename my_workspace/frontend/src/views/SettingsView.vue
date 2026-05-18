@@ -172,6 +172,80 @@
           </div>
         </div>
 
+        <!-- Detection settings — ADMIN+ only -->
+        <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
+          class="card bg-base-100 border border-base-300 shadow-none">
+          <div class="card-body p-0">
+            <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between">
+              <h3 class="font-mono text-xs font-semibold opacity-60">การตรวจจับ (Detection)</h3>
+              <span class="badge badge-xs badge-ghost font-mono">AI</span>
+            </div>
+
+            <div v-if="detectionLoading" class="flex justify-center py-6">
+              <span class="loading loading-spinner loading-sm opacity-40"></span>
+            </div>
+
+            <div v-else class="p-4 flex flex-col gap-4">
+              <!-- Cooldown -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">Cooldown ต่อ Object</p>
+                  <p class="text-xs opacity-50 mt-0.5">หลัง alert ระบบรอนานเท่านี้ก่อนจะ alert จาก object เดิมอีกครั้ง</p>
+                </div>
+                <select v-model="detectionForm.cooldown_seconds"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option :value="10">10 วินาที</option>
+                  <option :value="30">30 วินาที</option>
+                  <option :value="60">60 วินาที (default)</option>
+                  <option :value="120">2 นาที</option>
+                  <option :value="300">5 นาที</option>
+                  <option :value="600">10 นาที</option>
+                </select>
+              </div>
+
+              <!-- Confidence Threshold -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">Confidence Threshold</p>
+                  <p class="text-xs opacity-50 mt-0.5">ค่าต่ำสุดที่ AI ต้องมั่นใจก่อนนับเป็น detection (ต่ำ = sensitive มาก, สูง = strict)</p>
+                </div>
+                <select v-model="detectionForm.confidence_threshold"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option :value="30">30% — sensitive มาก</option>
+                  <option :value="40">40%</option>
+                  <option :value="50">50%</option>
+                  <option :value="60">60% (default)</option>
+                  <option :value="70">70%</option>
+                  <option :value="80">80% — strict</option>
+                  <option :value="90">90% — strict มาก</option>
+                </select>
+              </div>
+
+              <div class="alert alert-info py-2 text-xs font-mono gap-2">
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>ทั้งสองค่ามีผลทันที ไม่ต้อง restart</span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button class="btn btn-primary btn-sm font-mono"
+                  :disabled="detectionSaving"
+                  @click="saveDetectionSettings">
+                  <span v-if="detectionSaving" class="loading loading-spinner loading-xs"></span>
+                  บันทึก
+                </button>
+                <span v-if="detectionSaveMsg"
+                  class="text-xs font-mono"
+                  :class="detectionSaveMsg.startsWith('✓') ? 'text-success' : 'text-error'">
+                  {{ detectionSaveMsg }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Evidence quality settings — ADMIN+ only -->
         <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
           class="card bg-base-100 border border-base-300 shadow-none">
@@ -473,6 +547,7 @@ onMounted(() => {
   if (auth.role === 'SUPERADMIN' || auth.role === 'ADMIN') {
     loadTokenSettings()
     loadQualitySettings()
+    loadDetectionSettings()
   }
 })
 
@@ -543,6 +618,39 @@ async function saveQualitySettings() {
     qualitySaveMsg.value = e?.message ?? 'บันทึกไม่สำเร็จ'
   } finally {
     qualitySaving.value = false
+  }
+}
+
+// ── Detection settings (ADMIN+) ──────────────────────────────────────────────
+const detectionLoading  = ref(false)
+const detectionSaving   = ref(false)
+const detectionSaveMsg  = ref('')
+const detectionForm     = ref({ cooldown_seconds: 60, confidence_threshold: 60 })
+
+async function loadDetectionSettings() {
+  detectionLoading.value = true
+  try {
+    const settings = await systemApi.getSettings()
+    for (const s of settings) {
+      if (s.key === 'default_cooldown_seconds'    && s.value) detectionForm.value.cooldown_seconds     = Number(s.value)
+      if (s.key === 'default_confidence_threshold' && s.value) detectionForm.value.confidence_threshold = Number(s.value)
+    }
+  } catch { /* use defaults */ }
+  finally { detectionLoading.value = false }
+}
+
+async function saveDetectionSettings() {
+  detectionSaving.value = true
+  detectionSaveMsg.value = ''
+  try {
+    await systemApi.updateSetting('default_cooldown_seconds',    String(detectionForm.value.cooldown_seconds))
+    await systemApi.updateSetting('default_confidence_threshold', String(detectionForm.value.confidence_threshold))
+    detectionSaveMsg.value = '✓ บันทึกแล้ว — มีผลทันที'
+    setTimeout(() => { detectionSaveMsg.value = '' }, 3000)
+  } catch (e: any) {
+    detectionSaveMsg.value = e?.message ?? 'บันทึกไม่สำเร็จ'
+  } finally {
+    detectionSaving.value = false
   }
 }
 

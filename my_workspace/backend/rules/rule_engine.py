@@ -46,6 +46,16 @@ class RuleEngine:
         # Cooldown: (rule_id, track_id) → last trigger monotonic time
         self._last_trigger: dict[tuple[int, int], float] = {}
 
+        # Admin-configurable defaults (live-reload via CONFIG_CHANGED)
+        self._default_cooldown: int = 60        # seconds
+        self._default_confidence: float = 0.6   # 0.0–1.0
+
+        # BUG-019: track last-seen time to expire cooldowns for dead tracks
+        # key: track_id → monotonic time of last detection
+        self._track_last_seen: dict[int, float] = {}
+        # seconds without detection before a track's cooldown entries are cleared
+        self._stale_track_seconds: float = 3.0
+
     async def initialize(self) -> None:
         """Load all active rules and zones into memory."""
         logger.info("RuleEngine: starting initialization...")
@@ -69,6 +79,14 @@ class RuleEngine:
         if not detections or not self._rules:
             return
 
+        # BUG-019: update last-seen time for every active track, then expire stale cooldowns
+        now = time.monotonic()
+        for det in detections:
+            tid = det.get("track_id")
+            if tid is not None:
+                self._track_last_seen[tid] = now
+        self._expire_stale_cooldowns(now)
+
         # Get zones for this camera
         camera_rules = [r for r in self._rules.values() if r.get("camera_id") == camera_id]
         if not camera_rules:
@@ -84,7 +102,7 @@ class RuleEngine:
                 inside = self._zone_mgr.is_inside(zone_id, (cx, cy))
                 if inside:
                     zone_counts[zone_id] = zone_counts.get(zone_id, 0) + 1
-                
+
                 logger.debug("Track %d centroid=(%.3f, %.3f) zone=%d inside=%s",
                              det.get("track_id"), cx, cy, zone_id, inside)
 
@@ -100,7 +118,12 @@ class RuleEngine:
                     continue
                 if not rule_cfg.get("is_active", True):
                     continue
-                
+
+                # BUG-020: apply per-rule confidence threshold (fallback to global default)
+                conf_threshold = rule_cfg.get("confidence_threshold") or self._default_confidence
+                if det.get("confidence", 0.0) < conf_threshold:
+                    continue
+
                 # Build a minimal track-like object from payload
                 track = _TrackProxy(
                     track_id=track_id or 0,
@@ -126,7 +149,8 @@ class RuleEngine:
 
                 if triggered:
                     logger.info("Rule %d evaluation: TRIGGERED (track=%d)", rule_id, track.track_id)
-                    if self._is_in_cooldown(rule_id, track.track_id, rule_cfg.get("cooldown_seconds", 60)):
+                    cooldown = rule_cfg.get("cooldown_seconds") or self._default_cooldown
+                    if self._is_in_cooldown(rule_id, track.track_id, cooldown):
                         logger.info("Rule %d evaluation: SUPPRESSED (cooldown)", rule_id)
                         continue
                     self._set_cooldown(rule_id, track.track_id)
@@ -154,6 +178,18 @@ class RuleEngine:
     async def _on_config_changed(self, msg: MTPMessage) -> None:
         scope = msg.payload.get("scope")
         entity_id = msg.payload.get("entity_id")
+
+        # FEAT-011: live-reload admin-configurable detection defaults
+        if scope == "system_setting":
+            key = msg.payload.get("key")
+            value = msg.payload.get("value", "")
+            if key == "default_cooldown_seconds":
+                self._default_cooldown = int(value)
+                logger.info("RuleEngine: default_cooldown_seconds → %s s", value)
+            elif key == "default_confidence_threshold":
+                self._default_confidence = int(value) / 100.0
+                logger.info("RuleEngine: default_confidence_threshold → %s%%", value)
+            return
 
         if scope == "rule":
             rule = await self._config.get_rule(entity_id)
@@ -224,6 +260,28 @@ class RuleEngine:
 
     def _set_cooldown(self, rule_id: int, track_id: int) -> None:
         self._last_trigger[(rule_id, track_id)] = time.monotonic()
+
+    def _expire_stale_cooldowns(self, now: float) -> None:
+        """BUG-019: clear cooldown entries for track_ids that have not been seen recently.
+
+        When a tracker reuses an old track_id for a new object, the new object
+        would inherit the previous cooldown and be suppressed. Expiring the entry
+        once the original track has been gone for _stale_track_seconds prevents
+        the false suppression.
+        """
+        stale_ids = {
+            tid for tid, last_seen in self._track_last_seen.items()
+            if (now - last_seen) > self._stale_track_seconds
+        }
+        if not stale_ids:
+            return
+        dead_keys = [k for k in self._last_trigger if k[1] in stale_ids]
+        for k in dead_keys:
+            del self._last_trigger[k]
+        for tid in stale_ids:
+            del self._track_last_seen[tid]
+        if dead_keys:
+            logger.debug("Expired %d cooldown(s) for stale track(s): %s", len(dead_keys), stale_ids)
 
     async def _emit_triggered(
         self, rule_id, rule_cfg, camera_id, zone_id, track, result,

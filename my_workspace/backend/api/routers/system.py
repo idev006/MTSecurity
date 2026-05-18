@@ -30,11 +30,22 @@ _ALLOWED: dict[str, dict] = {
         "min": 1,
         "max": 90,
     },
+    "default_cooldown_seconds": {
+        "label": "Cooldown ต่อ Object (วินาที)",
+        "type": int,
+        "min": 10,
+        "max": 600,
+    },
+    "default_confidence_threshold": {
+        "label": "Confidence Threshold ขั้นต่ำ (%)",
+        "type": int,
+        "min": 10,
+        "max": 95,
+    },
     "stream_tier": {
         "label": "คุณภาพ Live Stream (Pilot's Console)",
         "type": str,
         "options": ["THUMBNAIL", "MONITOR", "DETAIL"],
-        # Requires server restart to take effect (CameraThread reads at startup)
     },
     "evidence_tier": {
         "label": "คุณภาพหลักฐาน (Snapshot & Clip)",
@@ -137,8 +148,10 @@ async def update_setting(body: SystemSettingUpdate, request: Request, db: DBDep,
 
     logger.info("System setting updated: %s=%s by %s", body.key, cast, user.username)
 
-    # Live-reload tier settings — publish CONFIG_CHANGED so CameraManager restarts threads
-    if body.key in ("stream_tier", "evidence_tier"):
+    # Live-reload — publish CONFIG_CHANGED so subscribers update in-memory defaults immediately
+    _LIVE_RELOAD_KEYS = {"stream_tier", "evidence_tier",
+                         "default_cooldown_seconds", "default_confidence_threshold"}
+    if body.key in _LIVE_RELOAD_KEYS:
         from protocol.mtp import MTPMessage, MTPMsgType
         bus = request.app.state.bus
         await bus.publish(MTPMessage(

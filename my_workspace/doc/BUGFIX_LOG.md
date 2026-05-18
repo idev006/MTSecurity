@@ -379,7 +379,7 @@ EventsView → <video> player modal
 
 | ไฟล์ | Bug/Feature ที่เกี่ยวข้อง |
 |------|-----------------|
-| `backend/rules/rule_engine.py` | BUG-001 |
+| `backend/rules/rule_engine.py` | BUG-001, BUG-019, BUG-020, FEAT-011 |
 | `backend/rules/logic_validator.py` | BUG-002, BUG-004 |
 | `backend/rules/behaviors/abandoned_object.py` | BUG-008, BUG-009 |
 | `backend/ai/tracker.py` | BUG-009 |
@@ -410,7 +410,7 @@ EventsView → <video> player modal
 | `frontend/src/api/client.ts` | FEAT-001, FEAT-004, FEAT-005, FEAT-006 |
 | `frontend/src/router/index.ts` | BUG-013, FEAT-001 |
 | `backend/models/system_setting.py` | FEAT-007 (NEW) |
-| `backend/api/routers/system.py` | FEAT-007, FEAT-009, BUG-017, FEAT-010 |
+| `backend/api/routers/system.py` | FEAT-007, FEAT-009, BUG-017, FEAT-010, FEAT-011 |
 | `frontend/src/components/AppLayout.vue` | FEAT-001, FEAT-008 |
 | `backend/ingestion/clip_buffer.py` | FEAT-009 |
 | `backend/ingestion/camera_thread.py` | FEAT-009, BUG-017 |
@@ -894,6 +894,106 @@ export function parseUtcIso(iso: string): Date {
 - `frontend/src/views/DashboardView.vue` — ใช้ `parseUtcIso()` ใน `relTime()`
 - `frontend/src/views/PilotView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + `hasRecentAlert()`
 - `frontend/src/views/CamerasView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + age check
+
+---
+
+### BUG-019 — Track ID Reuse ทำให้ Object ใหม่ถูก Suppress (ไม่ยิง Alert)
+
+**Severity:** High  
+**Component:** Backend — Rule Engine
+
+**อาการ:**  
+objectA เข้าพื้นที่เฝ้าระวัง → ระบบยิง alert → objectA ออกไป → objectB เข้าพื้นที่ใหม่ → ระบบนิ่ง ไม่ยิง alert
+
+**สาเหตุ:**  
+ByteTrack มี `_MAX_AGE=20` frames ให้ track "ผี" อยู่ได้ก่อนตาย หาก objectB เข้ามาก่อน track ของ objectA ตาย (< ~2 วิ) ByteTrack อาจ assign `track_id` เดิมให้ objectB  
+`RuleEngine._last_trigger` key คือ `(rule_id, track_id)` → objectB inherit cooldown ของ objectA → ถูก suppress
+
+```
+objectA → track_id=100 → alert → cooldown (rule, 100) เริ่มนับ
+objectA ออก → track "ผี" อยู่ 20 frames
+objectB เข้า ภายใน 2 วิ → ByteTrack assign track_id=100 ซ้ำ
+→ (rule, 100) ยังใน cooldown → objectB ถูก suppress ✗
+```
+
+**วิธีแก้:**  
+เพิ่ม `_track_last_seen: dict[int, float]` ใน RuleEngine — บันทึกเวลาล่าสุดที่เห็น `track_id` แต่ละตัว  
+ก่อน evaluate ทุก frame: เรียก `_expire_stale_cooldowns()` — ลบ `_last_trigger` entries ของ track ที่ไม่ถูก detect > 3 วิ  
+ผลลัพธ์: `track_id=100` ที่ reuse มาจะไม่มี cooldown entry → objectB trigger ได้ตามปกติ
+
+```python
+def _expire_stale_cooldowns(self, now: float) -> None:
+    stale_ids = {tid for tid, t in self._track_last_seen.items()
+                 if (now - t) > self._stale_track_seconds}  # 3.0 วิ
+    dead_keys = [k for k in self._last_trigger if k[1] in stale_ids]
+    for k in dead_keys: del self._last_trigger[k]
+    for tid in stale_ids: del self._track_last_seen[tid]
+```
+
+**ไฟล์ที่แก้:**
+- `backend/rules/rule_engine.py` — `__init__()` เพิ่ม `_track_last_seen`, `_stale_track_seconds` + เพิ่ม `_expire_stale_cooldowns()` + call ใน `_on_track_update()`
+
+---
+
+### BUG-020 — `confidence_threshold` ต่อ Rule ไม่ถูกนำมาใช้กรอง Detection
+
+**Severity:** High  
+**Component:** Backend — Rule Engine
+
+**อาการ:**  
+ตั้ง `confidence_threshold = 0.8` ให้ rule แต่ object ที่ AI detect ด้วย confidence 0.4 ยังคง trigger alert ได้
+
+**สาเหตุ:**  
+`rule_engine.py` cache `confidence_threshold` จาก DB ไว้ใน `_rules[rule_id]` แต่ใน `_on_track_update()` ไม่เคย compare ค่านี้กับ `det["confidence"]` ก่อน evaluate behavior — ค่าไม่ถูกใช้เลย
+
+**วิธีแก้:**  
+เพิ่ม confidence check ก่อน evaluate behavior:
+
+```python
+# ใน _on_track_update — ก่อน _TrackProxy
+conf_threshold = rule_cfg.get("confidence_threshold") or self._default_confidence
+if det.get("confidence", 0.0) < conf_threshold:
+    continue
+```
+
+**ไฟล์ที่แก้:**
+- `backend/rules/rule_engine.py` — `_on_track_update()` เพิ่ม confidence gate
+
+---
+
+### FEAT-011 — Admin-Configurable Detection Defaults (Cooldown + Confidence)
+
+**Component:** Backend + Frontend — System Settings / Rule Engine
+
+**เพิ่ม:**
+
+Admin สามารถปรับค่า default ของระบบ detection ได้จาก Settings UI — มีผลทันทีผ่าน MessageBus
+
+| Setting | ช่วงที่ยอมรับ | Default | ความหมาย |
+|---|---|---|---|
+| `default_cooldown_seconds` | 10–600 วิ | 60 วิ | นานเท่าไหรก่อน object เดิมจะ trigger อีกครั้ง |
+| `default_confidence_threshold` | 10–95% | 60% | AI ต้องมั่นใจขั้นต่ำเท่าไหรจึงนับเป็น detection |
+
+**Flow live-reload:**
+```
+Admin กด บันทึก
+  → PATCH /system/settings
+  → system.py บันทึก DB + publish CONFIG_CHANGED(scope="system_setting")
+  → RuleEngine._on_config_changed() รับ → อัปเดต self._default_cooldown / self._default_confidence ทันที
+  → frame ถัดไปใช้ค่าใหม่
+```
+
+**Backend:**
+- `api/routers/system.py` — เพิ่ม `default_cooldown_seconds`, `default_confidence_threshold` ใน `_ALLOWED`; เพิ่ม 2 keys ใน `_LIVE_RELOAD_KEYS`
+- `rules/rule_engine.py` — เพิ่ม `_default_cooldown`, `_default_confidence`; handle `scope="system_setting"` ใน `_on_config_changed()`; ใช้ค่า default เมื่อ rule ไม่มีค่า custom
+
+**Frontend:**
+- `views/SettingsView.vue` — เพิ่ม card "การตรวจจับ (Detection)" พร้อม dropdown Cooldown + Confidence Threshold
+
+**ไฟล์ที่แก้:**
+- `backend/api/routers/system.py`
+- `backend/rules/rule_engine.py`
+- `frontend/src/views/SettingsView.vue`
 
 ---
 
