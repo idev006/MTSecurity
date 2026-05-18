@@ -1,6 +1,6 @@
-# MTSecurity v2 — Pilot's Console
+# MTSecurity — AI Video Management System
 
-ระบบกล้องวงจรปิดอัจฉริยะพร้อม AI Detection, Real-time Alerts, และ Cockpit UI
+ระบบกล้องวงจรปิดอัจฉริยะพร้อม AI Detection, Real-time Alerts, Pilot's Console และ Admin UI ครบชุด
 
 ---
 
@@ -20,6 +20,7 @@ start-frontend.bat     เริ่มเฉพาะ Frontend → http://localh
 |---|---|---|
 | Python | 3.11+ | python.org |
 | Node.js | 18+ | nodejs.org |
+| FFmpeg | 6+ | ffmpeg.org |
 | OpenCV-Python | (auto via pip) | — |
 
 ---
@@ -29,7 +30,7 @@ start-frontend.bat     เริ่มเฉพาะ Frontend → http://localh
 ### 1. Backend
 
 ```bat
-:: สร้าง virtualenv (ทำครั้งเดียว — ใช้ร่วมกันทั้งโปรเจกต์)
+:: สร้าง virtualenv (ทำครั้งเดียว)
 python -m venv D:\dev\MTSecurity\my_env
 D:\dev\MTSecurity\my_env\Scripts\pip install -r my_workspace\backend\requirements.txt
 
@@ -41,6 +42,7 @@ copy my_workspace\backend\.env.example my_workspace\backend\.env
 ```env
 JWT_SECRET_KEY=สุ่มอย่างน้อย 32 ตัวอักษร
 ENCRYPTION_KEY=สร้างด้วย Fernet.generate_key()
+FFMPEG_PATH=D:\libs\ffmpeg\bin\ffmpeg.exe
 ```
 
 สร้าง keys ด้วย:
@@ -71,7 +73,7 @@ start-all.bat
 |---|---|---|
 | Frontend | http://localhost:5173 | Vue SPA (Vite dev server) |
 | Backend API | http://localhost:8000 | FastAPI |
-| API Docs | http://localhost:8000/docs | Swagger UI |
+| API Docs | http://localhost:8000/api/docs | Swagger UI (debug mode เท่านั้น) |
 | WebSocket | ws://localhost:8000/api/v1/ws | Real-time events |
 
 ---
@@ -81,32 +83,40 @@ start-all.bat
 ```
 my_workspace/
 ├── backend/                    FastAPI + Python
-│   ├── api/                    REST routers + WebSocket hub
-│   │   ├── routers/            auth, cameras, zones, rules, events, users, health
+│   ├── api/
+│   │   ├── middleware/         audit.py — AuditLog บันทึกทุก action
+│   │   ├── routers/            auth, cameras, zones, rules, events,
+│   │   │                       users, system, lpr, simulate, health
 │   │   └── websocket/          hub.py, router.py
 │   ├── ai/                     OpenVINO inference, detector, tracker, pipeline
-│   ├── alerts/                 snapshot, notifications (LINE/Discord/Slack/SMTP/MQTT/Webhook)
+│   ├── alerts/                 AlertManager, snapshot, clip, notifications
+│   │   └── notifications/      LINE, Discord, Slack, SMTP, MQTT, Webhook
 │   ├── auth/                   JWT handler, password hash, RBAC permissions
-│   ├── db/                     SQLAlchemy session, migrations, init
-│   ├── ingestion/              CameraThread (RTSP + Webcam), CameraManager, FrameBuffer
-│   ├── models/                 ORM models (Camera, Zone, Rule, Event, User, …)
+│   ├── db/                     SQLAlchemy session, pragmas, init_db
+│   ├── ingestion/              CameraThread (RTSP + Webcam), CameraManager,
+│   │                           FrameBuffer, ClipBuffer, WebcamWatcher
+│   ├── models/                 Camera, Zone, Rule, Event, User, AuditLog,
+│   │                           SystemSetting, LPRPlate
 │   ├── protocol/               MessageBus (MTP), payloads
-│   ├── rules/                  RuleEngine, ZoneManager, DwellTracker, behaviors
+│   ├── rules/                  RuleEngine, ZoneManager, DwellTracker,
+│   │   └── behaviors/          intrusion, loitering, crowd_density,
+│   │                           running, abandoned_object, …
 │   ├── schemas/                Pydantic v2 request/response schemas
 │   ├── ssot/                   StateRegistry, ConfigService
-│   ├── tests/                  unit/ + integration/ (182 tests)
+│   ├── tests/                  unit/ + integration/
 │   ├── config.py               Settings (pydantic-settings, reads .env)
-│   ├── main.py                 Boot orchestrator
 │   ├── .env.example            Template env vars
 │   └── requirements.txt
 │
 ├── frontend/                   Vue 3 + TypeScript + DaisyUI 5
 │   ├── src/
-│   │   ├── api/                client.ts — typed API wrappers (relative paths)
+│   │   ├── api/                client.ts — typed API wrappers
 │   │   ├── components/         AppLayout.vue (navbar + sidebar + statusbar)
-│   │   ├── router/             index.ts — auth guards
-│   │   ├── stores/             auth, cameras, events, system (Pinia)
-│   │   └── views/              Login, Dashboard, Cameras, Events, Settings
+│   │   ├── router/             index.ts — auth guards + role guards
+│   │   ├── stores/             auth, cameras, zones, events, system, toast (Pinia)
+│   │   ├── utils/              time.ts — UTC-safe datetime helpers
+│   │   └── views/              Login, Dashboard, Pilot, Cameras, Zones,
+│   │                           Events, Users, Settings
 │   ├── .env.example
 │   └── vite.config.ts          Proxy /api → backend
 │
@@ -114,7 +124,10 @@ my_workspace/
 │   ├── install-services.ps1    ติดตั้ง NSSM Windows Service
 │   └── check-startup.ps1       ตรวจสอบ environment ก่อนเริ่ม
 │
-├── doc/                        เอกสาร Architecture (v1, v2)
+├── doc/
+│   ├── BUGFIX_LOG.md           บันทึก bug + feature ทุกรายการ
+│   └── MASTER_BLUEPRINT_BIBLE.md  หลักการออกแบบโครงการ
+│
 ├── nginx.conf                  Reverse proxy config (production)
 ├── start-all.bat               รันทั้งระบบ (dev)
 ├── start-backend.bat           รันเฉพาะ backend
@@ -131,7 +144,8 @@ my_workspace/
 | **IP Camera / NVR** | RTSP URL | `rtsp://admin:pass@192.168.1.100:554/stream` |
 | **USB Webcam** | Device Index 0-9 | กด "+ WEBCAM" ในหน้า Cameras |
 
-USB Webcam รองรับสูงสุด 10 ตัว (device index 0-9) ต่อเครื่อง
+USB Webcam รองรับสูงสุด 10 ตัว (device index 0-9) ต่อเครื่อง  
+Webcam Hotplug Watcher ตรวจสอบทุก 15 วินาที และ remap device index อัตโนมัติ
 
 ---
 
@@ -139,9 +153,9 @@ USB Webcam รองรับสูงสุด 10 ตัว (device index 0-9) 
 
 | Role | สิทธิ์ |
 |---|---|
-| `SUPERADMIN` | ทุกอย่าง รวมถึงลบกล้อง, จัดการ users |
-| `ADMIN` | จัดการกล้อง, zones, rules, events |
-| `OPERATOR` | ดูกล้องที่ได้รับมอบหมาย, ยืนยัน events |
+| `SUPERADMIN` | ทุกอย่าง รวมถึงลบกล้อง, จัดการ users, ลบ events |
+| `ADMIN` | จัดการกล้อง/zones/rules, ดู events, ตั้งค่าระบบ |
+| `OPERATOR` | ดูกล้องที่ได้รับมอบหมาย, ยืนยัน/ปิดเสียง events |
 | `VIEWER` | ดูอย่างเดียว |
 
 ---
@@ -150,26 +164,102 @@ USB Webcam รองรับสูงสุด 10 ตัว (device index 0-9) 
 
 Base path: `/api/v1/`
 
+### Auth
 | Method | Endpoint | คำอธิบาย |
 |---|---|---|
 | POST | `/auth/login` | รับ access + refresh token |
-| POST | `/auth/logout` | revoke token |
+| POST | `/auth/logout` | revoke access + refresh token |
 | POST | `/auth/refresh` | ต่ออายุ token |
 | GET | `/auth/me` | ข้อมูล user ปัจจุบัน |
-| GET | `/cameras` | รายการกล้องทั้งหมด |
+
+### Cameras
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| GET | `/cameras` | รายการกล้อง |
 | POST | `/cameras` | เพิ่มกล้อง (RTSP หรือ Webcam) |
-| PATCH | `/cameras/{id}` | แก้ไข / enable / disable กล้อง |
-| DELETE | `/cameras/{id}` | ลบกล้อง (SUPERADMIN) |
+| PATCH | `/cameras/{id}` | แก้ไขกล้อง |
+| DELETE | `/cameras/{id}` | ลบกล้อง |
+| POST | `/cameras/{id}/enable` | เปิดกล้อง (cascade zones + rules) |
+| POST | `/cameras/{id}/disable` | ปิดกล้อง (cascade zones + rules) |
 | GET | `/cameras/{id}/status` | สถานะ runtime (FPS, latency, state) |
-| GET | `/cameras/webcams` | scan USB webcam ที่เชื่อมต่ออยู่ (index 0-9) |
+| GET | `/cameras/{id}/stream` | MJPEG live stream (`?token=JWT`) |
+| GET | `/cameras/webcams` | scan USB webcam ที่เชื่อมต่ออยู่ |
+
+### Zones & Rules
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| GET | `/zones` | รายการ zones |
+| POST | `/zones` | สร้าง zone |
+| PATCH | `/zones/{id}` | แก้ไข zone |
+| DELETE | `/zones/{id}` | ลบ zone |
+| POST | `/zones/{id}/enable` | เปิด zone (cascade rules) |
+| POST | `/zones/{id}/disable` | ปิด zone (cascade rules) |
+| GET | `/rules` | รายการ rules |
+| POST | `/rules` | สร้าง rule |
+| PATCH | `/rules/{id}` | แก้ไข rule |
+| DELETE | `/rules/{id}` | ลบ rule |
+| POST | `/rules/{id}/enable` | เปิด rule |
+| POST | `/rules/{id}/disable` | ปิด rule |
+
+### Events
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
 | GET | `/events` | รายการ events พร้อม filter |
 | POST | `/events/{id}/acknowledge` | ยืนยัน event |
 | POST | `/events/{id}/silence` | ปิดเสียง N วินาที |
 | POST | `/events/{id}/escalate` | ส่งต่อ escalation |
-| GET | `/health` | สถานะระบบ, CPU, RAM, cameras |
-| WS | `/api/v1/ws?token=JWT` | WebSocket — alert_fired, frame_ready |
+| DELETE | `/events/{id}` | ลบ event (ADMIN+) |
+| GET | `/events/{id}/clip` | ดาวน์โหลด video clip |
+| POST | `/events/purge` | bulk delete ตาม filter + dry_run mode |
 
-ดู Swagger UI ที่ `/docs` สำหรับ schema ครบถ้วน
+### Users
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| GET | `/users` | รายการ users (ADMIN+) |
+| POST | `/users` | สร้าง user (ADMIN+) |
+| PATCH | `/users/{id}` | แก้ไข user (ADMIN+) |
+| DELETE | `/users/{id}` | ลบ user (SUPERADMIN) |
+| POST | `/users/me/change-password` | เปลี่ยนรหัสผ่านตัวเอง |
+
+### System Settings
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| GET | `/system/settings` | รายการ settings (ADMIN+) |
+| PATCH | `/system/settings` | อัปเดต setting (ADMIN+) |
+
+Settings ที่ปรับได้:
+| Key | ประเภท | ค่าที่รับได้ | หมายเหตุ |
+|---|---|---|---|
+| `jwt_access_token_expire_minutes` | int | 5–1440 | มีผลกับ token ใหม่ |
+| `jwt_refresh_token_expire_days` | int | 1–90 | มีผลกับ token ใหม่ |
+| `stream_tier` | str | THUMBNAIL/MONITOR/DETAIL | มีผลหลัง restart |
+| `evidence_tier` | str | MONITOR/DETAIL/EVIDENCE | มีผลหลัง restart |
+| `clip_crf` | int | 18–28 | มีผลทันที (18=คมที่สุด) |
+
+### Other
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| GET | `/health` | สถานะระบบ, CPU, RAM, cameras |
+| GET | `/lpr` | LPR plate history |
+| POST | `/simulate/alert` | trigger alert จำลอง (debug mode) |
+| WS | `/ws?token=JWT` | WebSocket — alert_fired, frame_ready, camera_state |
+
+ดู Swagger UI ที่ `/api/docs` สำหรับ schema ครบถ้วน (debug mode เท่านั้น)
+
+---
+
+## Video Quality Architecture
+
+CameraThread encode ทุก frame เป็น 3 tier แยกกัน:
+
+```
+raw frame
+  ├─ THUMBNAIL (320×180 q60)  → frame_buffer  → AI Pipeline
+  ├─ evidence_tier*           → hires_buffer  → Snapshot + Clip
+  └─ stream_tier*             → stream_buffer → MJPEG Live Stream
+```
+
+*กำหนดได้โดย Admin ผ่าน Settings → ระบบ
 
 ---
 
@@ -201,8 +291,9 @@ sudo cp nginx.conf /etc/nginx/sites-available/mtsecurity
 sudo ln -s /etc/nginx/sites-available/mtsecurity /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
-# 3. รัน backend ด้วย systemd หรือ supervisor
-cd backend && python main.py
+# 3. รัน backend ด้วย uvicorn
+cd backend
+uvicorn api.app:app --host 0.0.0.0 --port 8000
 ```
 
 ## Production Deployment (Windows + NSSM)
@@ -221,9 +312,10 @@ nssm start MTSecurityFrontend
 
 | Layer | Technology |
 |---|---|
-| Backend | Python 3.11, FastAPI, SQLAlchemy 2, SQLite/PostgreSQL |
-| AI | OpenVINO, YOLOv11, ByteTrack |
+| Backend | Python 3.11, FastAPI, SQLAlchemy 2 (async), SQLite/PostgreSQL |
+| AI | OpenVINO, YOLOv11n, ByteTrack |
+| Video | OpenCV, FFmpeg (clip + faststart) |
 | Frontend | Vue 3, TypeScript, Vite, DaisyUI 5, Pinia |
-| Real-time | WebSocket (native FastAPI) |
-| Auth | JWT (HS256), Fernet encryption, RBAC |
-| Test | pytest-asyncio (182 tests) |
+| Real-time | WebSocket (native FastAPI), MJPEG stream |
+| Auth | JWT (HS256), Fernet encryption, RBAC + camera scoping |
+| Test | pytest-asyncio |
