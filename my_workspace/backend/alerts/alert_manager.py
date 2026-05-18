@@ -78,7 +78,7 @@ class AlertManager:
             post_row = await db.get(SystemSetting, "clip_post_seconds")
             crf  = int(crf_row.value)  if crf_row  else self._default_clip_crf
             pre  = float(pre_row.value)  if pre_row  else 5.0
-            post = float(post_row.value) if post_row else 5.0
+            post = float(post_row.value) if post_row else 10.0
             return crf, pre, post
         except Exception:
             return self._default_clip_crf, 5.0, 5.0
@@ -199,7 +199,28 @@ class AlertManager:
             if clip_path_name else None
         )
 
-        # ── 5. Dispatch notifications ────────────────────────────────────────
+        # ── 5. Publish ALERT_FIRED immediately (unblocks bus + WebSocket) ───────
+        # Notifications are dispatched in a background task so network latency
+        # on LINE/Discord/Slack never stalls the MessageBus dispatch loop.
+        fired_payload = AlertFiredPayload(
+            alert_id=event_id,
+            rule_name=rule_name,
+            camera_id=camera_id,
+            behavior=behavior,
+            severity=severity,
+            snapshot_url=snapshot_url,
+            clip_url=None,  # clip not ready yet — deferred
+            channels_notified=[],  # filled after notifications land
+        )
+        fired_msg = MTPMessage(
+            msg_type=MTPMsgType.ALERT_FIRED,
+            payload=fired_payload.model_dump(),
+            priority=MTPPriority.HIGH,
+            source="alert-manager",
+        )
+        await self._bus.publish(fired_msg)
+
+        # ── 6. Background notification dispatch ───────────────────────────────
         alert = AlertPayload(
             event_id=event_id,
             rule_name=rule_name,
@@ -212,32 +233,27 @@ class AlertManager:
             clip_url=clip_url,
             occurred_at=datetime.now(timezone.utc).isoformat(),
         )
-        results = await self._dispatcher.dispatch(alert)
-        channels_notified = [r.channel for r in results if r.success]
-
-        # ── 6. Publish ALERT_FIRED for WebSocket ──────────────────────────────
-        fired_payload = AlertFiredPayload(
-            alert_id=event_id,
-            rule_name=rule_name,
-            camera_id=camera_id,
-            behavior=behavior,
-            severity=severity,
-            snapshot_url=snapshot_url,
-            clip_url=clip_url,
-            channels_notified=channels_notified,
+        asyncio.create_task(
+            self._dispatch_notifications(alert, event_id),
+            name=f"notify-{event_id}",
         )
-        fired_msg = MTPMessage(
-            msg_type=MTPMsgType.ALERT_FIRED,
-            payload=fired_payload.model_dump(),
-            priority=MTPPriority.HIGH,
-            source="alert-manager",
-        )
-        await self._bus.publish(fired_msg)
 
         logger.info(
             "Alert fired — event=%d rule=%s camera=%d severity=%s",
             event_id, rule_name, camera_id, severity,
         )
+
+    async def _dispatch_notifications(self, alert: "AlertPayload", event_id: int) -> None:
+        """Background task: send notifications via all configured channels."""
+        try:
+            results = await self._dispatcher.dispatch(alert)
+            channels_notified = [r.channel for r in results if r.success]
+            logger.info(
+                "Event %d — notifications sent via: %s",
+                event_id, channels_notified or ["(none)"],
+            )
+        except Exception:
+            logger.exception("Event %d — notification dispatch failed", event_id)
 
     async def _save_clip_deferred(
         self,
@@ -250,7 +266,7 @@ class AlertManager:
         """Wait post_seconds then save clip; ring buffer now contains pre+post footage."""
         try:
             await asyncio.sleep(post_seconds)
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             clip_path = await loop.run_in_executor(
                 None,
                 lambda: self._clip_buffer.save_clip(

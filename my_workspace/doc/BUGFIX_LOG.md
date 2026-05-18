@@ -961,6 +961,65 @@ if det.get("confidence", 0.0) < conf_threshold:
 
 ---
 
+### BUG-022 — MessageBus หยุดรับ detection ระหว่างส่ง notifications (Bus Blocking)
+
+**Severity:** High  
+**Component:** Backend — AlertManager / MessageBus
+
+**อาการ:**  
+หลัง alert ครั้งแรก ระบบมักพลาด object ที่บุกรุกเข้ามาในช่วง 3–10 วินาทีถัดไป แม้ว่า track_id จะแตกต่างกัน (ไม่ใช่ cooldown)
+
+**สาเหตุ:**  
+`AlertManager._on_rule_triggered()` เรียก `await self._dispatcher.dispatch(alert)` แบบ inline ภายใน `MessageBus._dispatch_loop()` การส่ง notifications ผ่าน LINE/Discord/Slack ใช้เวลา 3–10 วินาที (network latency + timeout) ทำให้บัส block ทั้งระบบ — `TRACK_UPDATE` ที่เข้ามาระหว่างนี้สะสมจนเกิน TTL 30 วิ แล้ว drop ทิ้งหมด
+
+**วิธีแก้:**  
+1. Publish `ALERT_FIRED` ทันทีหลัง DB commit (ไม่รอ notifications)
+2. ย้าย notification dispatch ไปรันใน background task (`asyncio.create_task`)
+3. เพิ่ม `_dispatch_notifications()` helper method
+
+```
+เดิม: RULE_TRIGGERED → [await DB] → [await dispatch LINE/Discord] → publish ALERT_FIRED
+ใหม่: RULE_TRIGGERED → [await DB] → publish ALERT_FIRED → create_task(dispatch) 
+```
+
+**ผลลัพธ์:** บัสถูก block เพียง ~100ms (DB ops) แทนที่จะเป็น 3–10 วินาที
+
+**ไฟล์ที่แก้:**
+- `backend/alerts/alert_manager.py` — เพิ่ม `_dispatch_notifications()`; สลับลำดับ ALERT_FIRED กับ dispatch; `create_task(notify)`
+
+---
+
+### BUG-021 — WebSocket ECONNRESET: client ค้างใน hub หลัง TCP reset
+
+**Severity:** Medium  
+**Component:** Backend — WebSocket router
+
+**อาการ:**  
+Frontend แสดง `Error: read ECONNRESET` เป็นระยะ; หลัง browser tab ถูกปิดหรือ network drop ระบบยังพยายาม broadcast ไปยัง dead socket
+
+**สาเหตุ:**  
+`ws/router.py` จับเฉพาะ `WebSocketDisconnect` แต่เมื่อ client ตัดการเชื่อมต่อแบบ abrupt (TCP RST, browser crash, network outage) Python จะ throw `ConnectionResetError` หรือ `RuntimeError` ซึ่งไม่ถูกจับ → handler coroutine ตาย → client ยังค้างอยู่ใน `hub._clients` → hub พยายาม send ไปยัง dead socket ทุกครั้งที่มี broadcast
+
+**วิธีแก้:**  
+```python
+# เดิม
+except WebSocketDisconnect:
+    await hub.disconnect(client)
+
+# ใหม่
+except WebSocketDisconnect:
+    pass
+except Exception as exc:
+    logger.debug("WS connection dropped: %s", exc)
+finally:
+    await hub.disconnect(client)
+```
+
+**ไฟล์ที่แก้:**
+- `backend/api/websocket/router.py` — แก้ exception handling ใน `ws_endpoint()`
+
+---
+
 ### FEAT-012 — Pre+Post Event Video Clip (Admin-Configurable)
 
 **Component:** Backend + Frontend — ClipBuffer / AlertManager / System Settings

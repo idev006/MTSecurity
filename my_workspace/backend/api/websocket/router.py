@@ -41,4 +41,10 @@ async def ws_endpoint(
             raw = await websocket.receive_text()
             await hub.handle_message(client, raw)
     except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        # Covers ConnectionResetError, RuntimeError("Cannot call receive"),
+        # and any other abrupt TCP-level disconnects the browser may cause.
+        logger.debug("WS connection dropped: %s", exc)
+    finally:
         await hub.disconnect(client)
