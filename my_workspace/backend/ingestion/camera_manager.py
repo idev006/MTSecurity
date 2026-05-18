@@ -172,9 +172,33 @@ class CameraManager:
         self._threads[camera_id] = thread
         thread.start()
 
+    async def _restart_all_cameras(self) -> None:
+        """Stop and restart every active camera thread to apply new encoding settings."""
+        camera_ids = list(self._threads.keys())
+        for camera_id in camera_ids:
+            self.stop_camera(camera_id)
+            await self.start_camera(camera_id)
+        logger.info("All %d camera thread(s) restarted with updated encoding settings", len(camera_ids))
+
     async def _on_config_changed(self, msg: MTPMessage) -> None:
         payload = msg.payload
-        if payload.get("scope") != "camera":
+        scope = payload.get("scope")
+
+        # Live-reload tier settings (stream_tier / evidence_tier)
+        if scope == "system_setting":
+            key = payload.get("key")
+            value = payload.get("value", "")
+            if key == "stream_tier":
+                self._stream_tier = value
+                logger.info("stream_tier → %s — restarting camera threads", value)
+                await self._restart_all_cameras()
+            elif key == "evidence_tier":
+                self._evidence_tier = value
+                logger.info("evidence_tier → %s — restarting camera threads", value)
+                await self._restart_all_cameras()
+            return
+
+        if scope != "camera":
             return
 
         camera_id = payload.get("entity_id")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 
@@ -100,7 +100,7 @@ async def list_settings(db: DBDep) -> list[SystemSettingRead]:
 
 @router.patch("/settings", response_model=SystemSettingRead,
               dependencies=[require("system:write")])
-async def update_setting(body: SystemSettingUpdate, db: DBDep, user: CurrentUser) -> SystemSettingRead:
+async def update_setting(body: SystemSettingUpdate, request: Request, db: DBDep, user: CurrentUser) -> SystemSettingRead:
     """Update a single configurable system setting."""
     meta = _ALLOWED.get(body.key)
     if meta is None:
@@ -136,6 +136,17 @@ async def update_setting(body: SystemSettingUpdate, db: DBDep, user: CurrentUser
     await db.refresh(existing)
 
     logger.info("System setting updated: %s=%s by %s", body.key, cast, user.username)
+
+    # Live-reload tier settings — publish CONFIG_CHANGED so CameraManager restarts threads
+    if body.key in ("stream_tier", "evidence_tier"):
+        from protocol.mtp import MTPMessage, MTPMsgType
+        bus = request.app.state.bus
+        await bus.publish(MTPMessage(
+            msg_type=MTPMsgType.CONFIG_CHANGED,
+            payload={"scope": "system_setting", "key": body.key, "value": str(cast)},
+            source="system_router",
+        ))
+
     return SystemSettingRead(
         key=existing.key, value=existing.value, label=meta["label"],
         type_hint=meta["type"].__name__,

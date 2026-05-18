@@ -410,11 +410,11 @@ EventsView → <video> player modal
 | `frontend/src/api/client.ts` | FEAT-001, FEAT-004, FEAT-005, FEAT-006 |
 | `frontend/src/router/index.ts` | BUG-013, FEAT-001 |
 | `backend/models/system_setting.py` | FEAT-007 (NEW) |
-| `backend/api/routers/system.py` | FEAT-007, FEAT-009, BUG-017 |
+| `backend/api/routers/system.py` | FEAT-007, FEAT-009, BUG-017, FEAT-010 |
 | `frontend/src/components/AppLayout.vue` | FEAT-001, FEAT-008 |
 | `backend/ingestion/clip_buffer.py` | FEAT-009 |
 | `backend/ingestion/camera_thread.py` | FEAT-009, BUG-017 |
-| `backend/ingestion/camera_manager.py` | FEAT-009, BUG-017 |
+| `backend/ingestion/camera_manager.py` | FEAT-009, BUG-017, FEAT-010 |
 | `backend/alerts/alert_manager.py` | FEAT-009 |
 | `backend/api/app.py` | FEAT-009, BUG-017 |
 | `backend/schemas/event.py` | BUG-018 |
@@ -894,6 +894,38 @@ export function parseUtcIso(iso: string): Date {
 - `frontend/src/views/DashboardView.vue` — ใช้ `parseUtcIso()` ใน `relTime()`
 - `frontend/src/views/PilotView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + `hasRecentAlert()`
 - `frontend/src/views/CamerasView.vue` — ใช้ `parseUtcIso()` ใน `fmtTime()` + age check
+
+---
+
+### FEAT-010 — Live-reload Stream Tier + Evidence Tier (ไม่ต้อง restart server)
+
+**Component:** Backend — System Settings / CameraManager
+
+**ปัญหาเดิม:**  
+`stream_tier` และ `evidence_tier` ถูกอ่านจาก DB ครั้งเดียวตอน server startup และเก็บค้างใน `CameraManager._stream_tier` / `_evidence_tier` — เปลี่ยนค่าใน Settings UI แล้วไม่มีผลจนกว่าจะ restart server
+
+**สาเหตุ:**  
+`CameraManager` รับ tier เป็น constructor argument และไม่มีกลไก re-read ค่าเลย
+
+**วิธีแก้:**  
+ใช้ `MessageBus CONFIG_CHANGED` pattern ที่มีอยู่แล้วในระบบ (เหมือน camera enable/disable)
+
+```
+Admin เปลี่ยน stream_tier ใน UI
+  → PATCH /system/settings
+  → system.py บันทึก DB + publish CONFIG_CHANGED(scope="system_setting", key, value)
+  → CameraManager._on_config_changed() รับ message
+  → อัปเดต self._stream_tier / self._evidence_tier
+  → _restart_all_cameras() — stop + start ทุก thread (~2-3 วินาที)
+  → camera threads ใหม่ encode ที่ tier ใหม่ ✓
+```
+
+`clip_crf` ยังคงมีผลทันทีโดยไม่ต้อง restart thread (อ่าน DB ต่อ alert เหมือนเดิม)
+
+**ไฟล์ที่แก้:**
+- `backend/api/routers/system.py` — เพิ่ม `Request` param + publish `CONFIG_CHANGED` สำหรับ `stream_tier`/`evidence_tier`
+- `backend/ingestion/camera_manager.py` — เพิ่ม `_restart_all_cameras()` + handle `scope="system_setting"` ใน `_on_config_changed()`
+- `frontend/src/views/SettingsView.vue` — เปลี่ยน warning note จาก "ต้อง restart" เป็น "restart กล้องสั้นๆ ~2-3 วินาที"
 
 ---
 
