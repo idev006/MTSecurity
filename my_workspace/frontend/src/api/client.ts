@@ -282,6 +282,10 @@ export interface SystemSetting {
   key: string
   value: string
   label: string
+  type_hint: string
+  options: string[] | null
+  min: number | null
+  max: number | null
   updated_by: string | null
   updated_at: string
 }

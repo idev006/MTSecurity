@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable
 
 from alerts.notifications.base import AlertPayload
 from models.event import Event
+from models.system_setting import SystemSetting
 from protocol.mtp import MTPMessage, MTPMsgType, MTPPriority
 from protocol.payloads import AlertFiredPayload
 
@@ -47,6 +48,8 @@ class AlertManager:
         ffmpeg_path: str = "",
         clip_width: int = 0,
         clip_height: int = 0,
+        hires_buffer: "FrameBuffer | None" = None,
+        default_clip_crf: int = 23,
     ) -> None:
         self._dispatcher = dispatcher
         self._config = config_svc
@@ -54,16 +57,26 @@ class AlertManager:
         self._base_url = base_url.rstrip("/")
         self._session_factory = session_factory
         self._frame_buffer = frame_buffer
+        self._hires_buffer = hires_buffer
         self._snapshot_dir = snapshot_dir
         self._clip_buffer = clip_buffer
         self._clip_dir = clip_dir
         self._ffmpeg_path = ffmpeg_path
         self._clip_width = clip_width
         self._clip_height = clip_height
+        self._default_clip_crf = default_clip_crf
 
     def register(self, bus: "MessageBus") -> None:
         bus.subscribe(MTPMsgType.RULE_TRIGGERED, self._on_rule_triggered)
         bus.subscribe(MTPMsgType.ALERT_ACKNOWLEDGED, self._on_alert_acknowledged)
+
+    async def _get_clip_crf(self, db) -> int:
+        """Read clip_crf from system_settings; fall back to default if not set."""
+        try:
+            row = await db.get(SystemSetting, "clip_crf")
+            return int(row.value) if row else self._default_clip_crf
+        except Exception:
+            return self._default_clip_crf
 
     async def _on_rule_triggered(self, msg: MTPMessage) -> None:
         p = msg.payload
@@ -96,8 +109,8 @@ class AlertManager:
             await db.flush()
             event_id = event.id
             
-            # ── 2. Capture Snapshot ─────────────────────────────────────────────
-            frame = self._frame_buffer.get(camera_id)
+            # ── 2. Capture Snapshot (prefer high-res buffer for evidence quality) ──
+            frame = (self._hires_buffer or self._frame_buffer).get(camera_id)
             if frame:
                 logger.info("AlertManager: Frame found for camera %d. Attempting snapshot capture...", camera_id)
                 try:
@@ -146,6 +159,7 @@ class AlertManager:
             clip_path_name: str | None = None
             if self._clip_buffer is not None and self._clip_dir is not None:
                 try:
+                    clip_crf = await self._get_clip_crf(db)
                     clip_path = await asyncio.get_event_loop().run_in_executor(
                         None,
                         lambda: self._clip_buffer.save_clip(
@@ -153,6 +167,7 @@ class AlertManager:
                             ffmpeg_path=self._ffmpeg_path,
                             out_width=self._clip_width,
                             out_height=self._clip_height,
+                            crf=clip_crf,
                         ),
                     )
                     if clip_path:

@@ -172,6 +172,75 @@
           </div>
         </div>
 
+        <!-- Evidence quality settings — ADMIN+ only -->
+        <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
+          class="card bg-base-100 border border-base-300 shadow-none">
+          <div class="card-body p-0">
+            <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between">
+              <h3 class="font-mono text-xs font-semibold opacity-60">คุณภาพหลักฐาน (Snapshot & Clip)</h3>
+              <span class="badge badge-xs badge-ghost font-mono">EVIDENCE</span>
+            </div>
+
+            <div v-if="qualityLoading" class="flex justify-center py-6">
+              <span class="loading loading-spinner loading-sm opacity-40"></span>
+            </div>
+
+            <div v-else class="p-4 flex flex-col gap-4">
+              <!-- Evidence Tier -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">ความละเอียดหลักฐาน</p>
+                  <p class="text-xs opacity-50 mt-0.5">ใช้กับทั้ง Snapshot ภาพนิ่ง และ Video Clip</p>
+                </div>
+                <select v-model="qualityForm.evidence_tier"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option value="MONITOR">MONITOR — 640×360</option>
+                  <option value="DETAIL">DETAIL — 1280×720</option>
+                  <option value="EVIDENCE">EVIDENCE — ต้นฉบับ</option>
+                </select>
+              </div>
+
+              <!-- Clip CRF -->
+              <div class="flex items-center justify-between gap-4">
+                <div class="flex-1 min-w-0">
+                  <p class="font-mono text-xs font-semibold">Video CRF</p>
+                  <p class="text-xs opacity-50 mt-0.5">ยิ่งต่ำยิ่งคมชัด แต่ไฟล์ใหญ่ขึ้น (18–28)</p>
+                </div>
+                <select v-model="qualityForm.clip_crf"
+                  class="select select-bordered select-sm font-mono w-36 shrink-0">
+                  <option :value="18">18 — คมชัดสูงสุด</option>
+                  <option :value="20">20 — คมชัดมาก</option>
+                  <option :value="23">23 — สมดุล (default)</option>
+                  <option :value="26">26 — ประหยัดพื้นที่</option>
+                  <option :value="28">28 — ประหยัดสูงสุด</option>
+                </select>
+              </div>
+
+              <div class="alert alert-warning py-2 text-xs font-mono gap-2">
+                <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <span>ความละเอียด (Evidence Tier) มีผลหลัง restart server — Video CRF มีผลทันที</span>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button class="btn btn-primary btn-sm font-mono"
+                  :disabled="qualitySaving"
+                  @click="saveQualitySettings">
+                  <span v-if="qualitySaving" class="loading loading-spinner loading-xs"></span>
+                  บันทึก
+                </button>
+                <span v-if="qualitySaveMsg"
+                  class="text-xs font-mono"
+                  :class="qualitySaveMsg.startsWith('✓') ? 'text-success' : 'text-error'">
+                  {{ qualitySaveMsg }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Notification channels status -->
         <div class="card bg-base-100 border border-base-300 shadow-none">
           <div class="card-body p-0">
@@ -389,6 +458,7 @@ onMounted(() => {
   system.fetchHealth()
   if (auth.role === 'SUPERADMIN' || auth.role === 'ADMIN') {
     loadTokenSettings()
+    loadQualitySettings()
   }
 })
 
@@ -424,6 +494,39 @@ async function saveTokenSettings() {
     tokenSaveMsg.value = e?.message ?? 'บันทึกไม่สำเร็จ'
   } finally {
     tokenSaving.value = false
+  }
+}
+
+// ── Evidence quality settings (ADMIN+) ───────────────────────────────────────
+const qualityLoading  = ref(false)
+const qualitySaving   = ref(false)
+const qualitySaveMsg  = ref('')
+const qualityForm     = ref({ evidence_tier: 'DETAIL', clip_crf: 23 })
+
+async function loadQualitySettings() {
+  qualityLoading.value = true
+  try {
+    const settings = await systemApi.getSettings()
+    for (const s of settings) {
+      if (s.key === 'evidence_tier' && s.value) qualityForm.value.evidence_tier = s.value
+      if (s.key === 'clip_crf' && s.value) qualityForm.value.clip_crf = Number(s.value)
+    }
+  } catch { /* use defaults */ }
+  finally { qualityLoading.value = false }
+}
+
+async function saveQualitySettings() {
+  qualitySaving.value = true
+  qualitySaveMsg.value = ''
+  try {
+    await systemApi.updateSetting('evidence_tier', qualityForm.value.evidence_tier)
+    await systemApi.updateSetting('clip_crf', String(qualityForm.value.clip_crf))
+    qualitySaveMsg.value = '✓ บันทึกแล้ว'
+    setTimeout(() => { qualitySaveMsg.value = '' }, 3000)
+  } catch (e: any) {
+    qualitySaveMsg.value = e?.message ?? 'บันทึกไม่สำเร็จ'
+  } finally {
+    qualitySaving.value = false
   }
 }
 

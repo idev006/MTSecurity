@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"D:/dev/MTSecurity\" worktree prune)",
+      "Bash(git -C \"D:/dev/MTSecurity\" branch -d claude/blissful-rubin-a26093 claude/infallible-agnesi-937b03)",
+      "Bash(ffmpeg -version)",
+      "Bash(python -c ' *)",
+      "Bash(find /d/dev/MTSecurity -name \"pydantic\" -type d 2>/dev/null | head -3 *)",
+      "Bash(/d/dev/MTSecurity/my_env/Scripts/python -c ' *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(git -C /d/dev/MTSecurity/my_workspace add my_workspace/backend/api/deps.py my_workspace/backend/api/middleware/audit.py my_workspace/backend/api/routers/cameras.py my_workspace/frontend/src/api/client.ts my_workspace/frontend/src/stores/cameras.ts)",
+      "Bash(git -C /d/dev/MTSecurity/my_workspace commit -m ' *)",
+      "Bash(git -C /d/dev/MTSecurity add my_workspace/backend/api/deps.py my_workspace/backend/api/middleware/audit.py my_workspace/backend/api/routers/cameras.py my_workspace/frontend/src/api/client.ts my_workspace/frontend/src/stores/cameras.ts)",
+      "Bash(git -C /d/dev/MTSecurity commit -m ' *)",
+      "Bash(xargs grep -l \"config_svc\\\\|ConfigService\\\\|update_camera\\\\|update_zone\\\\|update_rule\")",
+      "Bash(git -C /d/dev/MTSecurity add my_workspace/backend/api/routers/cameras.py my_workspace/backend/api/routers/zones.py my_workspace/backend/api/routers/rules.py my_workspace/frontend/src/api/client.ts my_workspace/frontend/src/stores/zones.ts my_workspace/frontend/src/views/ZonesView.vue)",
+      "Bash(git -C /d/dev/MTSecurity add my_workspace/doc/BUGFIX_LOG.md)",
+      "Bash(git -C /d/dev/MTSecurity commit -m 'docs: update BUGFIX_LOG with BUG-011 to BUG-015 and FEAT-004 to FEAT-006 *)",
+      "Bash(git -C /d/dev/MTSecurity push origin main)",
+      "Bash(git -C /d/dev/MTSecurity add my_workspace/backend/models/system_setting.py my_workspace/backend/models/__init__.py my_workspace/backend/auth/permissions.py my_workspace/backend/api/routers/system.py my_workspace/backend/api/routers/auth.py my_workspace/backend/api/app.py my_workspace/frontend/src/api/client.ts my_workspace/frontend/src/stores/auth.ts my_workspace/frontend/src/components/AppLayout.vue my_workspace/frontend/src/views/SettingsView.vue)",
+      "Bash(git -C /d/dev/MTSecurity commit -m 'docs: add BUG-016, FEAT-007, FEAT-008 to BUGFIX_LOG *)"
+    ]
+  }
+}

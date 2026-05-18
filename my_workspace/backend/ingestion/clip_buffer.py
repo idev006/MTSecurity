@@ -53,6 +53,7 @@ def _apply_faststart(
     ffmpeg_exe: str | None,
     out_width: int = 0,
     out_height: int = 0,
+    crf: int = 23,
 ) -> Path:
     """
     Re-encode / remux the clip via FFmpeg:
@@ -78,7 +79,7 @@ def _apply_faststart(
 
     cmd = [ffmpeg_exe, "-y", "-i", str(src)]
     if vf_parts:
-        cmd += ["-vf", "".join(vf_parts), "-c:v", "libx264", "-crf", "23", "-preset", "fast"]
+        cmd += ["-vf", "".join(vf_parts), "-c:v", "libx264", "-crf", str(crf), "-preset", "fast"]
     else:
         cmd += ["-c", "copy"]
     cmd += ["-movflags", "+faststart", str(tmp)]
@@ -151,6 +152,7 @@ class ClipBuffer:
         ffmpeg_path: str = "",
         out_width: int = 0,
         out_height: int = 0,
+        crf: int = 23,
     ) -> Path | None:
         """
         Write buffered frames to an MP4 file, then run FFmpeg post-processing:
@@ -204,7 +206,7 @@ class ClipBuffer:
             # cv2/mp4v writes moov at end-of-file; ffmpeg re-encodes/remuxes
             # to move moov to front AND resize to the configured output size.
             ffmpeg_exe = _resolve_ffmpeg(ffmpeg_path)
-            out_path = _apply_faststart(out_path, ffmpeg_exe, out_width, out_height)
+            out_path = _apply_faststart(out_path, ffmpeg_exe, out_width, out_height, crf)
 
             return out_path
 

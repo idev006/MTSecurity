@@ -74,7 +74,18 @@ async def _lifespan(app: FastAPI):
     await config_svc.initialize()
 
     # ── 4. Ingestion Layer ───────────────────────────────────────────────────
+    # Read evidence quality settings from DB (applied at CameraThread startup)
+    from models.system_setting import SystemSetting as _SystemSetting
+    from sqlalchemy import select as _sa_select
+    async with get_session_factory()() as _db:
+        _rows = (await _db.execute(_sa_select(_SystemSetting))).scalars().all()
+        _settings_map = {r.key: r.value for r in _rows}
+    evidence_tier = _settings_map.get("evidence_tier", "DETAIL")
+    clip_crf = int(_settings_map.get("clip_crf", "23"))
+    logger.info("Evidence quality: tier=%s crf=%d", evidence_tier, clip_crf)
+
     frame_buffer = FrameBuffer()
+    hires_buffer = FrameBuffer()           # high-res frames for snapshot + clip
     clip_buffer = ClipBuffer(max_frames=150)   # ~10 s @ 15 fps
     cam_manager = CameraManager(
         buffer=frame_buffer,
@@ -83,6 +94,8 @@ async def _lifespan(app: FastAPI):
         bus=bus,
         encryption_key=cfg.encryption_key.get_secret_value().encode(),
         clip_buffer=clip_buffer,
+        hires_buffer=hires_buffer,
+        evidence_tier=evidence_tier,
     )
     await cam_manager.start_all()
     logger.info("CameraManager started — %d camera(s) active", cam_manager.active_count)
@@ -128,6 +141,8 @@ async def _lifespan(app: FastAPI):
         ffmpeg_path=cfg.ffmpeg_path,
         clip_width=cfg.clip_width,
         clip_height=cfg.clip_height,
+        hires_buffer=hires_buffer,
+        default_clip_crf=clip_crf,
     )
     alert_manager.register(bus)
 
@@ -148,6 +163,7 @@ async def _lifespan(app: FastAPI):
     app.state.ws_hub = hub
     app.state.cam_manager = cam_manager
     app.state.frame_buffer = frame_buffer
+    app.state.hires_buffer = hires_buffer
     app.state.rule_engine = rule_engine
     app.state.alert_manager = alert_manager
 

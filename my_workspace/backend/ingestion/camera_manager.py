@@ -39,9 +39,13 @@ class CameraManager:
         bus: "MessageBus",
         encryption_key: bytes,
         clip_buffer: ClipBuffer | None = None,
+        hires_buffer: FrameBuffer | None = None,
+        evidence_tier: str = "DETAIL",
     ) -> None:
         self._buffer = buffer
         self._clip_buffer = clip_buffer
+        self._hires_buffer = hires_buffer
+        self._evidence_tier = evidence_tier
         self._config = config_svc
         self._state = state_reg
         self._bus = bus
@@ -76,6 +80,8 @@ class CameraManager:
             self._buffer.remove(camera_id)
             if self._clip_buffer is not None:
                 self._clip_buffer.remove(camera_id)
+            if self._hires_buffer is not None:
+                self._hires_buffer.remove(camera_id)
             logger.info("Camera %d stopped", camera_id)
 
     async def restart_camera(self, camera_id: int) -> None:
@@ -127,6 +133,8 @@ class CameraManager:
                 device_index=device_index,
                 target_fps=cam.fps,
                 clip_buffer=self._clip_buffer,
+                hires_buffer=self._hires_buffer,
+                evidence_tier=self._evidence_tier,
             )
         else:
             # RTSP — decrypt URL before passing to thread
@@ -147,6 +155,8 @@ class CameraManager:
                 rtsp_url=rtsp_url,
                 target_fps=cam.fps,
                 clip_buffer=self._clip_buffer,
+                hires_buffer=self._hires_buffer,
+                evidence_tier=self._evidence_tier,
             )
 
         self._threads[camera_id] = thread

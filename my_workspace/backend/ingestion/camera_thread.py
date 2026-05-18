@@ -58,11 +58,14 @@ class CameraThread(threading.Thread):
         device_index: int | None = None,
         target_fps: float = 15.0,
         clip_buffer: ClipBuffer | None = None,
+        hires_buffer: FrameBuffer | None = None,
+        evidence_tier: str = "DETAIL",
     ) -> None:
         super().__init__(name=f"cam-{camera_id}", daemon=True)
         self.camera_id = camera_id
         self._buffer = buffer
         self._clip_buffer = clip_buffer
+        self._hires_buffer = hires_buffer
         self._state = state_reg
         self._bus = bus
         self._source_type = source_type
@@ -70,6 +73,7 @@ class CameraThread(threading.Thread):
         self._device_index = device_index
         self._frame_interval = 1.0 / max(target_fps, 1.0)
         self._stop_event = threading.Event()
+        self._evidence_tier = ResolutionTier(evidence_tier)
         # Rolling FPS — exponential moving average over actual frame intervals
         self._fps_ema: float = 0.0
         self._fps_last_time: float = 0.0
@@ -157,12 +161,22 @@ class CameraThread(threading.Thread):
 
     def _process_frame(self, frame) -> None:
         try:
-            jpeg = encode_frame(frame, ResolutionTier.THUMBNAIL)
             h, w = frame.shape[:2]
-            f = Frame(camera_id=self.camera_id, data=jpeg, width=w, height=h)
-            self._buffer.put(f)
-            if self._clip_buffer is not None:
-                self._clip_buffer.put(f)
+
+            # THUMBNAIL → live streaming buffer (small, fast, used by AI pipeline + WebSocket)
+            jpeg_thumb = encode_frame(frame, ResolutionTier.THUMBNAIL)
+            f_thumb = Frame(camera_id=self.camera_id, data=jpeg_thumb, width=w, height=h)
+            self._buffer.put(f_thumb)
+
+            # Evidence tier → high-res buffer (snapshot) + clip buffer (video)
+            need_hires = self._hires_buffer is not None or self._clip_buffer is not None
+            if need_hires:
+                jpeg_hires = encode_frame(frame, self._evidence_tier)
+                f_hires = Frame(camera_id=self.camera_id, data=jpeg_hires, width=w, height=h)
+                if self._hires_buffer is not None:
+                    self._hires_buffer.put(f_hires)
+                if self._clip_buffer is not None:
+                    self._clip_buffer.put(f_hires)
 
             # Compute rolling FPS via exponential moving average
             now = time.monotonic()

@@ -30,6 +30,18 @@ _ALLOWED: dict[str, dict] = {
         "min": 1,
         "max": 90,
     },
+    "evidence_tier": {
+        "label": "คุณภาพหลักฐาน (Snapshot & Clip)",
+        "type": str,
+        "options": ["MONITOR", "DETAIL", "EVIDENCE"],
+        # Requires server restart to take effect (CameraThread reads at startup)
+    },
+    "clip_crf": {
+        "label": "Video CRF (18=ดีสุด/ไฟล์ใหญ่, 28=เล็กสุด/คุณภาพต่ำ)",
+        "type": int,
+        "min": 18,
+        "max": 28,
+    },
 }
 
 
@@ -39,6 +51,10 @@ class SystemSettingRead(BaseModel):
     key: str
     value: str
     label: str
+    type_hint: str          # "int" | "str"
+    options: list[str] | None = None   # for str enum settings
+    min: int | None = None             # for int range settings
+    max: int | None = None
     updated_by: str | None
     updated_at: datetime
 
@@ -62,11 +78,14 @@ async def list_settings(db: DBDep) -> list[SystemSettingRead]:
     out: list[SystemSettingRead] = []
     for key, meta in _ALLOWED.items():
         row = rows.get(key)
-        # If not yet set in DB, return the allowed-key default
         out.append(SystemSettingRead(
             key=key,
             value=row.value if row else "",
             label=meta["label"],
+            type_hint=meta["type"].__name__,
+            options=meta.get("options"),
+            min=meta.get("min"),
+            max=meta.get("max"),
             updated_by=row.updated_by if row else None,
             updated_at=row.updated_at if row else datetime.now(timezone.utc),
         ))
@@ -81,15 +100,20 @@ async def update_setting(body: SystemSettingUpdate, db: DBDep, user: CurrentUser
     if meta is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown setting key: {body.key!r}")
 
-    # Type + range validation
+    # Type + range/enum validation
     try:
         cast = meta["type"](body.value)
     except (ValueError, TypeError):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Value must be {meta['type'].__name__}")
-    if cast < meta["min"] or cast > meta["max"]:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            f"Value must be between {meta['min']} and {meta['max']}")
+    if "options" in meta:
+        if cast not in meta["options"]:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"Value must be one of {meta['options']}")
+    elif "min" in meta:
+        if cast < meta["min"] or cast > meta["max"]:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"Value must be between {meta['min']} and {meta['max']}")
 
     now = datetime.now(timezone.utc)
     existing = await db.get(SystemSetting, body.key)
@@ -108,5 +132,9 @@ async def update_setting(body: SystemSettingUpdate, db: DBDep, user: CurrentUser
     logger.info("System setting updated: %s=%s by %s", body.key, cast, user.username)
     return SystemSettingRead(
         key=existing.key, value=existing.value, label=meta["label"],
+        type_hint=meta["type"].__name__,
+        options=meta.get("options"),
+        min=meta.get("min"),
+        max=meta.get("max"),
         updated_by=existing.updated_by, updated_at=existing.updated_at,
     )
