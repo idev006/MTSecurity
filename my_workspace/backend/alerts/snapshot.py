@@ -36,7 +36,8 @@ def _scale_params(w: int, cfg_font_scale: float = 0.0, cfg_box_thickness: int = 
     if cfg_font_scale > 0:
         font_scale = cfg_font_scale
     else:
-        font_scale = max(0.40, min(1.20, w / 1280.0 * 1.20))
+        # Target: ~0.80 at 640px, ~1.20 at 960px, capped at 1.50
+        font_scale = max(0.65, min(1.50, w / 800.0))
 
     text_thickness = max(1, int(font_scale * 1.5))
 
