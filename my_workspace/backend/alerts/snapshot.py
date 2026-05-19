@@ -20,6 +20,22 @@ _COLORS = {
 }
 
 
+def _scale_params(w: int) -> tuple[float, int, int]:
+    """
+    Return (font_scale, text_thickness, box_thickness) sized for image width.
+
+    Keeps text legible across all evidence tiers:
+      THUMBNAIL  320 px → scale ≈ 0.40  thin lines
+      MONITOR    640 px → scale ≈ 0.50
+      DETAIL    1280 px → scale ≈ 0.90  thicker lines
+      EVIDENCE  1920 px → scale ≈ 1.20  (capped)
+    """
+    font_scale     = max(0.40, min(1.20, w / 1280.0 * 1.20))
+    text_thickness = max(1, int(font_scale * 1.5))
+    box_thickness  = max(1, int(w / 400))
+    return font_scale, text_thickness, box_thickness
+
+
 def annotate_frame(
     frame: np.ndarray,
     detections: list[dict],
@@ -29,11 +45,14 @@ def annotate_frame(
 ) -> np.ndarray:
     """
     Draw bounding boxes, labels, rule name, timestamp on a BGR frame.
+    Font sizes scale automatically with image resolution.
     Returns annotated copy (does not mutate original).
     """
     out = frame.copy()
     h, w = out.shape[:2]
     color = _COLORS.get(severity, _COLORS["medium"])
+    font_scale, text_thick, box_thick = _scale_params(w)
+    pad = max(4, int(w / 200))   # label background padding scales too
 
     for det in detections:
         bbox = det.get("bbox", {})
@@ -42,7 +61,7 @@ def annotate_frame(
         x2 = int(bbox.get("x2", 1) * w)
         y2 = int(bbox.get("y2", 1) * h)
 
-        cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, box_thick)
 
         label = det.get("label", "")
         conf = det.get("confidence", 0.0)
@@ -51,15 +70,19 @@ def annotate_frame(
         if track_id is not None:
             text += f" #{track_id}"
 
-        (tw, th), _ = cv2.getTextSize(text, _FONT, 0.5, 1)
-        cv2.rectangle(out, (x1, y1 - th - 6), (x1 + tw + 4, y1), color, -1)
-        cv2.putText(out, text, (x1 + 2, y1 - 3), _FONT, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+        (tw, th), _ = cv2.getTextSize(text, _FONT, font_scale, text_thick)
+        ty = max(y1 - pad, th + pad)   # keep label inside frame top
+        cv2.rectangle(out, (x1, ty - th - pad), (x1 + tw + pad, ty), color, -1)
+        cv2.putText(out, text, (x1 + pad // 2, ty - pad // 2),
+                    _FONT, font_scale, (255, 255, 255), text_thick, cv2.LINE_AA)
 
-    # Overlay banner
+    # Overlay banner — height + font scale with image
+    banner_h = max(24, int(h * 0.038))
     ts = (timestamp or datetime.now(timezone.utc)).strftime("%Y-%m-%d %H:%M:%S UTC")
     banner = f"[{severity.upper()}] {rule_name} | {ts}"
-    cv2.rectangle(out, (0, 0), (w, 26), (0, 0, 0), -1)
-    cv2.putText(out, banner, (6, 18), _FONT, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+    cv2.rectangle(out, (0, 0), (w, banner_h), (0, 0, 0), -1)
+    cv2.putText(out, banner, (pad, banner_h - pad),
+                _FONT, font_scale * 0.85, (255, 255, 255), text_thick, cv2.LINE_AA)
 
     return out
 
