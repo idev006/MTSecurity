@@ -5,6 +5,68 @@
 
 ---
 
+## 2026-05-19
+
+---
+
+### BUG-023 — Bounding Box Label ตัวเล็กเกินบน DETAIL/EVIDENCE Snapshot
+
+**Severity:** Low  
+**Component:** Backend — Snapshot Annotator
+
+**อาการ:**  
+ข้อความ label บน bounding box (เช่น `person 87% #5`) เล็กมากบน snapshot ที่ถ่ายใน `DETAIL` (1280×720) หรือ `EVIDENCE` tier แต่ดูใหญ่เกินบน `THUMBNAIL`
+
+**สาเหตุ:**  
+`snapshot.py` hardcode `font_scale=0.5` และ `thickness=1` โดยไม่คำนึงถึงขนาดภาพ — ค่าที่เหมาะกับ 640px กลายเป็นเล็กมากที่ 1280px+
+
+**วิธีแก้:**  
+เพิ่ม `_scale_params(w)` helper คำนวณ `font_scale`, `text_thickness`, `box_thickness` จากความกว้างภาพ:
+
+```
+THUMBNAIL  320 px → scale 0.40, box 1px
+MONITOR    640 px → scale 0.50, box 1px
+DETAIL    1280 px → scale 0.90, box 3px
+EVIDENCE  1920 px → scale 1.20, box 4px (capped)
+```
+
+Banner height และ label padding ก็ scale ตาม `h` และ `w` ด้วย
+
+**ไฟล์ที่แก้:**
+- `backend/alerts/snapshot.py` — เพิ่ม `_scale_params()`; แทน hardcoded values ด้วย dynamic params
+
+---
+
+### FEAT-013 — Annotation Font Scale ตั้งค่าได้ใน .env
+
+**Component:** Backend — Config / Snapshot Annotator
+
+**เพิ่ม:**  
+ตั้งค่า override ขนาด label และกรอบ bounding box ได้ใน `backend/.env`:
+
+```env
+# 0.0 = auto-scale ตาม resolution (แนะนำ)
+ANNOTATION_FONT_SCALE=0.0
+ANNOTATION_BOX_THICKNESS=0
+
+# ตัวอย่าง: บังคับขนาดตายตัว
+ANNOTATION_FONT_SCALE=0.7
+ANNOTATION_BOX_THICKNESS=2
+```
+
+**Logic:**
+- `ANNOTATION_FONT_SCALE > 0` → ใช้ค่านั้นทุก resolution
+- `ANNOTATION_FONT_SCALE = 0` → auto-scale ตามความกว้างภาพ (BUG-023 fix)
+- `ANNOTATION_BOX_THICKNESS > 0` → override หนากรอบ
+- มีผลหลัง server restart
+
+**ไฟล์ที่แก้:**
+- `backend/config.py` — เพิ่ม `annotation_font_scale: float = 0.0` + `annotation_box_thickness: int = 0`
+- `backend/alerts/snapshot.py` — `_scale_params()` รับ `cfg_font_scale` + `cfg_box_thickness`; `annotate_frame()` อ่านจาก `get_settings()`
+- `backend/.env.example` — เพิ่ม Annotation section พร้อม comment อธิบาย
+
+---
+
 ## 2026-05-16
 
 ---

@@ -240,6 +240,12 @@ Settings ที่ปรับได้:
 | `clip_pre_seconds` | int | 2–30 วิ | มีผลทันทีกับ clip ถัดไป |
 | `clip_post_seconds` | int | 2–30 วิ | มีผลทันทีกับ clip ถัดไป |
 
+### Annotation (ตั้งใน `backend/.env`)
+| Key | ค่า | หมายเหตุ |
+|---|---|---|
+| `ANNOTATION_FONT_SCALE` | float (0.0 = auto) | 0.0 = scale อัตโนมัติตาม resolution แนะนำ |
+| `ANNOTATION_BOX_THICKNESS` | int (0 = auto) | ความหนากรอบ bounding box (px) |
+
 ### Other
 | Method | Endpoint | คำอธิบาย |
 |---|---|---|

@@ -443,6 +443,15 @@ async def _on_config_changed(self, msg):
 
 ### P-10 — TRACK_UPDATE ส่งจาก thread แต่ใช้ `await bus.publish()`
 
+---
+
+### P-11 — Label บน Bounding Box เล็กเกินบน Hi-Res Snapshot
+
+**สาเหตุ:** `font_scale` hardcoded ค่าเดียว ไม่ scale ตาม resolution  
+**อาการ:** ภาพ snapshot ที่ DETAIL/EVIDENCE tier อ่าน label แทบไม่ออก  
+**แก้ไข:** มีแล้ว (BUG-023) — `_scale_params(w)` คำนวณ scale จากความกว้างภาพ  
+**ปรับได้:** ตั้ง `ANNOTATION_FONT_SCALE` ใน `.env` เพื่อ override (FEAT-013)
+
 **สาเหตุ:** AIPipeline รันใน daemon thread ไม่ใช่ event loop  
 **อาการ:** `RuntimeError: no running event loop` หรือ deadlock  
 **แก้ไข:** ใช้ `bus.publish_nowait(msg)` เสมอจาก thread context
@@ -535,12 +544,14 @@ logger.info("ClipBuffer frames for cam %d: %d", cam_id, len(clip_buffer.snapshot
 | BUG-020 | Confidence threshold ไม่มีผล | cache แต่ไม่ได้ apply ใน evaluate loop | ✅ Fixed |
 | BUG-021 | WebSocket ECONNRESET / dead client ค้าง | `except WebSocketDisconnect` ไม่ครอบทุกกรณี | ✅ Fixed |
 | BUG-022 | ระบบนิ่ง 3–10 วิ หลัง alert | notification dispatch block MessageBus | ✅ Fixed |
+| BUG-023 | Label เล็กเกินบน hi-res snapshot | font_scale hardcoded ไม่ scale ตาม resolution | ✅ Fixed |
 
 | ID | Feature | สถานะ |
 |---|---|---|
 | FEAT-010 | Live-reload stream/evidence tier ไม่ต้อง restart server | ✅ Done |
 | FEAT-011 | Admin ตั้งค่า cooldown + confidence threshold ได้ live | ✅ Done |
 | FEAT-012 | Clip บันทึกก่อน+หลัง detect, Admin ตั้งค่าได้ | ✅ Done |
+| FEAT-013 | Annotation font scale + box thickness ตั้งค่าได้ใน .env | ✅ Done |
 
 ---
 
