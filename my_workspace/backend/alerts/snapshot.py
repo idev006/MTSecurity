@@ -11,7 +11,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-_FONT = cv2.FONT_HERSHEY_SIMPLEX
+_FONT      = cv2.FONT_HERSHEY_SIMPLEX
 _COLORS = {
     "low":      (0, 255, 0),      # green
     "medium":   (0, 165, 255),    # orange
@@ -20,19 +20,31 @@ _COLORS = {
 }
 
 
-def _scale_params(w: int) -> tuple[float, int, int]:
+def _scale_params(w: int, cfg_font_scale: float = 0.0, cfg_box_thickness: int = 0) -> tuple[float, int, int]:
     """
     Return (font_scale, text_thickness, box_thickness) sized for image width.
 
-    Keeps text legible across all evidence tiers:
+    Auto-scale keeps text legible across all evidence tiers:
       THUMBNAIL  320 px → scale ≈ 0.40  thin lines
       MONITOR    640 px → scale ≈ 0.50
       DETAIL    1280 px → scale ≈ 0.90  thicker lines
       EVIDENCE  1920 px → scale ≈ 1.20  (capped)
+
+    Pass cfg_font_scale > 0 (from ANNOTATION_FONT_SCALE in .env) to override.
+    Pass cfg_box_thickness > 0 (from ANNOTATION_BOX_THICKNESS in .env) to override.
     """
-    font_scale     = max(0.40, min(1.20, w / 1280.0 * 1.20))
+    if cfg_font_scale > 0:
+        font_scale = cfg_font_scale
+    else:
+        font_scale = max(0.40, min(1.20, w / 1280.0 * 1.20))
+
     text_thickness = max(1, int(font_scale * 1.5))
-    box_thickness  = max(1, int(w / 400))
+
+    if cfg_box_thickness > 0:
+        box_thickness = cfg_box_thickness
+    else:
+        box_thickness = max(1, int(w / 400))
+
     return font_scale, text_thickness, box_thickness
 
 
@@ -48,10 +60,17 @@ def annotate_frame(
     Font sizes scale automatically with image resolution.
     Returns annotated copy (does not mutate original).
     """
+    from config import get_settings
+    cfg = get_settings()
+
     out = frame.copy()
     h, w = out.shape[:2]
     color = _COLORS.get(severity, _COLORS["medium"])
-    font_scale, text_thick, box_thick = _scale_params(w)
+    font_scale, text_thick, box_thick = _scale_params(
+        w,
+        cfg_font_scale=cfg.annotation_font_scale,
+        cfg_box_thickness=cfg.annotation_box_thickness,
+    )
     pad = max(4, int(w / 200))   # label background padding scales too
 
     for det in detections:

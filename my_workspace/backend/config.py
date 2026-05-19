@@ -78,6 +78,15 @@ class Settings(BaseSettings):
     max_snapshot_age_days: int = 30
     disk_alert_threshold_gb: float = 20.0
 
+    # ── Annotation ───────────────────────────────────────────────────────────
+    # Override the auto-scaled font size on snapshot bounding-box labels.
+    # 0.0 = auto (scales with image resolution — recommended).
+    # Set a positive value (e.g. 0.6) to force a fixed scale at all resolutions.
+    annotation_font_scale: float = 0.0
+    # Override the bounding-box border thickness (px).
+    # 0 = auto.  Set e.g. 2 for a fixed 2 px border.
+    annotation_box_thickness: int = 0
+
     # ── FFmpeg ────────────────────────────────────────────────────────────────
     # Absolute path to the ffmpeg executable.
     # Leave empty ("") to search PATH automatically.
