@@ -69,14 +69,17 @@
                       :r="OVR.centroidRadius"
                       :fill="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'" />
 
-                    <!-- Label HUD -->
-                    <g :transform="`translate(${track.bbox.x1 * vWidth}, ${track.bbox.y1 * vHeight < OVR.labelHeight + 4 ? (track.bbox.y1 * vHeight) : (track.bbox.y1 * vHeight - OVR.labelHeight)})`">
-                      <rect x="0" y="0" :width="getTextWidth(track.label, track.track_id)" :height="OVR.labelHeight"
-                        :fill="hasRecentAlert(primaryId!) ? '#ff0000' : '#00A3FF'" fill-opacity="0.9" />
-                      <text :x="OVR.labelPaddingX" :y="OVR.labelHeight - 3"
+                    <!-- Label HUD — anchored inside-top of bbox to prevent inter-box overlap -->
+                    <g :transform="`translate(${track.bbox.x1 * vWidth}, ${track.bbox.y1 * vHeight})`">
+                      <rect x="0" y="0"
+                        :width="getTextWidth(getLabelText(track))"
+                        :height="OVR.labelHeight"
+                        :fill="hasRecentAlert(primaryId!) ? '#cc0000' : '#005fa3'"
+                        fill-opacity="0.85" rx="2" />
+                      <text :x="OVR.labelPaddingX" :y="OVR.labelHeight - 4"
                         :style="`font-size:${OVR.labelFontSize}px`"
                         class="font-black fill-white font-mono uppercase tracking-tighter">
-                        {{ hasRecentAlert(primaryId!) ? `🚨 ${track.label.toUpperCase()}` : `${track.label.toUpperCase()}: TRK-${track.track_id} (${Math.round(track.confidence * 100)}%)` }}
+                        {{ getLabelText(track) }}
                       </text>
                     </g>
                   </g>
@@ -538,8 +541,24 @@ function getTrackColor(label: string) {
   return colors[label.toLowerCase()] || colors.default
 }
 
-function getTextWidth(label: string, id: number) {
-  return (`#${id} ${label}`.length * OVR.labelCharWidth) + OVR.labelPaddingX * 2
+/** Returns the label string that will actually be rendered in the SVG. */
+function getLabelText(track: any): string {
+  return hasRecentAlert(primaryId.value!)
+    ? `🚨 ${track.label.toUpperCase()}`
+    : `${track.label.toUpperCase()}: TRK-${track.track_id} (${Math.round(track.confidence * 100)}%)`
+}
+
+/**
+ * Estimates pixel width of a label string for the background rect.
+ * Emoji / wide code-points are counted as 2 units; ASCII as 1.
+ */
+function getTextWidth(text: string): number {
+  let units = 0
+  for (const ch of text) {
+    const cp = ch.codePointAt(0) ?? 0
+    units += cp > 0x2E7F ? 2 : 1   // emoji, CJK, misc symbols → wider
+  }
+  return (units * OVR.labelCharWidth) + OVR.labelPaddingX * 2
 }
 
 function closeModal() {

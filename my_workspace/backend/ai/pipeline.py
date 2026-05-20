@@ -20,6 +20,7 @@ from protocol.payloads import TrackUpdatePayload
 
 if TYPE_CHECKING:
     from ai.inference_engine import InferenceEngine
+    from ingestion.evidence_store import EvidenceStore
     from protocol.message_bus import MessageBus
 
 logger = logging.getLogger(__name__)
@@ -49,12 +50,16 @@ class AIPipeline:
         bus: "MessageBus",
         confidence_threshold: float = 0.6,
         target_classes: list[int] | None = None,
+        evidence_store: "EvidenceStore | None" = None,
+        hires_buffer: "FrameBuffer | None" = None,
     ) -> None:
         self._buffer = buffer
         self._engine = engine
         self._bus = bus
         self._confidence = confidence_threshold
         self._target_classes = target_classes  # None = all COCO classes
+        self._evidence_store = evidence_store   # FEAT-014: frame pinning
+        self._hires_buffer = hires_buffer       # prefer high-res frame for evidence
         self._trackers: dict[int, ObjectTracker] = {}
         self._trackers_lock = threading.Lock()
         self._processing: set[int] = set()   # cameras with in-flight inference
@@ -145,6 +150,33 @@ class AIPipeline:
                     self._trackers[camera_id] = ObjectTracker()
                 tracker = self._trackers[camera_id]
             tracks = tracker.update(detections)
+
+            # FEAT-014/015: Pin inference frame + all active tracks to EvidenceStore.
+            # AlertManager reads from here so snapshots show the exact frame that
+            # triggered a rule and annotate every visible object — not just the one
+            # that fired the alert.
+            if self._evidence_store is not None:
+                # Prefer high-res buffer for evidence quality; fall back to the
+                # inference frame if hires_buffer is not wired up.
+                evidence_frame = (
+                    self._hires_buffer.get(camera_id)
+                    if self._hires_buffer is not None
+                    else frame
+                ) or frame   # if hires slot is empty, use inference frame
+
+                track_dicts = [
+                    {
+                        "track_id": t.track_id,
+                        "label":    t.label,
+                        "confidence": t.confidence,
+                        "bbox": {
+                            "x1": t.x1, "y1": t.y1,
+                            "x2": t.x2, "y2": t.y2,
+                        },
+                    }
+                    for t in tracks
+                ]
+                self._evidence_store.pin(camera_id, evidence_frame, track_dicts)
 
             # Update session registry
             active_ids = {t.track_id for t in tracks}

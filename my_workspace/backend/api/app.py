@@ -26,6 +26,7 @@ async def _lifespan(app: FastAPI):
     from db.session import get_session_factory, init_engine
     from ingestion.camera_manager import CameraManager
     from ingestion.clip_buffer import ClipBuffer
+    from ingestion.evidence_store import EvidenceStore
     from ingestion.frame_buffer import FrameBuffer
     from ingestion.webcam_watcher import WebcamWatcher
     from alerts.alert_manager import AlertManager
@@ -85,9 +86,12 @@ async def _lifespan(app: FastAPI):
     clip_crf = int(_settings_map.get("clip_crf", "23"))
     logger.info("Quality: stream=%s evidence=%s crf=%d", stream_tier, evidence_tier, clip_crf)
 
-    frame_buffer  = FrameBuffer()
-    hires_buffer  = FrameBuffer()           # evidence frames for snapshot + clip
-    stream_buffer = FrameBuffer()           # stream frames for MJPEG endpoint
+    frame_buffer   = FrameBuffer()
+    hires_buffer   = FrameBuffer()           # evidence frames for snapshot + clip
+    stream_buffer  = FrameBuffer()           # stream frames for MJPEG endpoint
+    # FEAT-014/015: shared evidence store — AIPipeline pins frames here after
+    # each inference; AlertManager reads from here for accurate snapshots.
+    evidence_store = EvidenceStore()
     # 600 frames ≈ 40 s @ 15 fps — accommodates any pre+post clip config up to 35 s total
     clip_buffer   = ClipBuffer(max_frames=600)
     cam_manager = CameraManager(
@@ -128,6 +132,8 @@ async def _lifespan(app: FastAPI):
         bus=bus,
         confidence_threshold=cfg.ai_confidence_threshold,
         target_classes=cfg.ai_target_classes,
+        evidence_store=evidence_store,   # FEAT-014/015: pin frame+tracks after inference
+        hires_buffer=hires_buffer,       # use high-res frame for evidence quality
     )
     ai_pipeline.start(loop)
 
@@ -148,6 +154,7 @@ async def _lifespan(app: FastAPI):
         clip_height=cfg.clip_height,
         hires_buffer=hires_buffer,
         default_clip_crf=clip_crf,
+        evidence_store=evidence_store,   # FEAT-014/015: pinned frame + all tracks
     )
     alert_manager.register(bus)
 

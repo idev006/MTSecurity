@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Callable
 
@@ -15,11 +16,17 @@ from protocol.payloads import AlertFiredPayload
 
 if TYPE_CHECKING:
     from alerts.notifications.dispatcher import NotificationDispatcher
-    from protocol.message_bus import MessageBus
-    from ssot.config_service import ConfigService
     from ingestion.clip_buffer import ClipBuffer
+    from ingestion.evidence_store import EvidenceStore
     from ingestion.frame_buffer import FrameBuffer
     from pathlib import Path
+    from protocol.message_bus import MessageBus
+    from ssot.config_service import ConfigService
+
+# FEAT-016: Minimum seconds between notifications for the same camera.
+# Events are always persisted to DB; only the outbound notification is throttled.
+# This prevents a "3 persons intrude simultaneously → 3 LINE messages" storm.
+_NOTIF_DEBOUNCE_SECONDS = 10.0
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +57,7 @@ class AlertManager:
         clip_height: int = 0,
         hires_buffer: "FrameBuffer | None" = None,
         default_clip_crf: int = 23,
+        evidence_store: "EvidenceStore | None" = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._config = config_svc
@@ -65,6 +73,10 @@ class AlertManager:
         self._clip_width = clip_width
         self._clip_height = clip_height
         self._default_clip_crf = default_clip_crf
+        # FEAT-014/015: EvidenceStore — pinned frame + all tracks at inference time
+        self._evidence_store = evidence_store
+        # FEAT-016: per-camera notification debounce (monotonic timestamp)
+        self._notif_last_fired: dict[int, float] = {}
 
     def register(self, bus: "MessageBus") -> None:
         bus.subscribe(MTPMsgType.RULE_TRIGGERED, self._on_rule_triggered)
@@ -113,32 +125,51 @@ class AlertManager:
             db.add(event)
             await db.flush()
             event_id = event.id
-            
-            # ── 2. Capture Snapshot (prefer high-res buffer for evidence quality) ──
-            frame = (self._hires_buffer or self._frame_buffer).get(camera_id)
-            if frame:
-                logger.info("AlertManager: Frame found for camera %d. Attempting snapshot capture...", camera_id)
+
+            # ── 2. Capture Snapshot ──────────────────────────────────────────
+            # FEAT-014: use the frame that was actually inferred (not latest live
+            #           frame) so the snapshot matches the triggering moment.
+            # FEAT-015: annotate ALL active tracks visible at inference time, not
+            #           only the one that fired the rule.
+            pinned = self._evidence_store.get(camera_id) if self._evidence_store else None
+
+            if pinned is not None:
+                # Happy path: evidence store has the correct frame + all tracks
+                evidence_frame = pinned.frame
+                detections = pinned.tracks   # every object visible at inference time
+                logger.info(
+                    "AlertManager: Using pinned evidence for camera %d — "
+                    "%d track(s) in frame (triggering track_id=%s)",
+                    camera_id, len(detections), track_id,
+                )
+            else:
+                # Fallback: evidence store not wired or first frame not yet pinned
+                evidence_frame = (self._hires_buffer or self._frame_buffer).get(camera_id)
+                meta = p.get("metadata", {})
+                detections = []
+                if "bbox" in meta:
+                    detections.append({
+                        "track_id": track_id,
+                        "label":    meta.get("label", "unknown"),
+                        "confidence": confidence,
+                        "bbox":     meta["bbox"],
+                    })
+                logger.warning(
+                    "AlertManager: EvidenceStore miss for camera %d — "
+                    "falling back to live buffer (single-track annotation)",
+                    camera_id,
+                )
+
+            if evidence_frame is not None:
                 try:
                     import cv2
                     import numpy as np
                     from alerts.snapshot import save_snapshot
-                    
-                    # Decode jpeg
-                    nparr = np.frombuffer(frame.data, np.uint8)
+
+                    nparr  = np.frombuffer(evidence_frame.data, np.uint8)
                     img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    
+
                     if img_np is not None:
-                        # Reconstruct detection dict for the annotator
-                        detections = []
-                        meta = p.get("metadata", {})
-                        if "bbox" in meta:
-                            detections.append({
-                                "track_id": track_id,
-                                "label": meta.get("label", "unknown"),
-                                "confidence": confidence,
-                                "bbox": meta["bbox"],
-                            })
-                        
                         path = save_snapshot(
                             frame=img_np,
                             detections=detections,
@@ -148,18 +179,18 @@ class AlertManager:
                             camera_id=camera_id,
                             event_id=event_id,
                         )
-                        # Save relative path to db (e.g. filename only)
                         event.snapshot_path = path.name
                         snapshot_path = path.name
-                        logger.info("AlertManager: Snapshot saved to %s", path)
+                        logger.info("AlertManager: Snapshot saved → %s", path)
                     else:
                         logger.error("AlertManager: Failed to decode frame for camera %d", camera_id)
-                except Exception as e:
-                    logger.error("AlertManager: Failed to capture snapshot for event %d: %s", event_id, e, exc_info=True)
+                except Exception:
+                    logger.exception("AlertManager: Snapshot failed for event %d", event_id)
             else:
-                logger.warning("AlertManager: No frame found in buffer for camera %d. Buffer keys: %s",
-                               camera_id, list(self._frame_buffer._slots.keys()))
-            
+                logger.warning(
+                    "AlertManager: No frame available for camera %d — snapshot skipped", camera_id,
+                )
+
             await db.commit()
             logger.info(
                 "Event %d persisted — behavior=%s camera=%d snapshot=%s",
@@ -244,10 +275,32 @@ class AlertManager:
         )
 
     async def _dispatch_notifications(self, alert: "AlertPayload", event_id: int) -> None:
-        """Background task: send notifications via all configured channels."""
+        """Background task: send notifications via all configured channels.
+
+        FEAT-016: Notifications are debounced per camera.  If a notification was
+        already sent for this camera within _NOTIF_DEBOUNCE_SECONDS, the outbound
+        message is suppressed.  The DB event and ALERT_FIRED WebSocket message are
+        always emitted regardless — only the external channels (LINE, Discord, …)
+        are throttled.
+        """
+        camera_id = alert.camera_id
+        now_mono  = time.monotonic()
+        last_sent = self._notif_last_fired.get(camera_id, 0.0)
+        elapsed   = now_mono - last_sent
+
+        if elapsed < _NOTIF_DEBOUNCE_SECONDS:
+            logger.info(
+                "Event %d — notification suppressed (camera %d debounce, "
+                "%.1fs since last send, cooldown=%.0fs)",
+                event_id, camera_id, elapsed, _NOTIF_DEBOUNCE_SECONDS,
+            )
+            return
+
         try:
             results = await self._dispatcher.dispatch(alert)
             channels_notified = [r.channel for r in results if r.success]
+            if channels_notified:
+                self._notif_last_fired[camera_id] = now_mono
             logger.info(
                 "Event %d — notifications sent via: %s",
                 event_id, channels_notified or ["(none)"],
