@@ -80,6 +80,21 @@ services:
     mem_limit: 512m
     cpus: 0.5
 
+  nginx:
+    image: nginx:1.27-alpine
+    networks:
+      - infra
+    ports:
+      - "80:80"               # http://localhost → proxies native backend:8000 + frontend:5173
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/mtsecurity.native.conf:/etc/nginx/conf.d/mtsecurity.conf:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Docker Desktop already sets this, explicit for Linux
+    restart: unless-stopped
+    mem_limit: 64m
+    cpus: 0.5
+
   grafana:
     image: grafana/grafana:11.0.0
     networks:
