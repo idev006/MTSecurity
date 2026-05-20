@@ -363,6 +363,179 @@
           </div>
         </div>
 
+        <!-- System Info — ADMIN+ only ──────────────────────────────────────── -->
+        <div v-if="auth.role === 'SUPERADMIN' || auth.role === 'ADMIN'"
+          class="card bg-base-100 border border-base-300 shadow-none">
+          <div class="card-body p-0">
+            <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between">
+              <h3 class="font-mono text-xs font-semibold opacity-60">ข้อมูลระบบ (Administrator)</h3>
+              <div class="flex items-center gap-2">
+                <span class="badge badge-xs badge-ghost font-mono">ADMIN ONLY</span>
+                <button class="btn btn-xs btn-ghost font-mono" @click="loadSysInfo">↻</button>
+              </div>
+            </div>
+
+            <div v-if="sysInfoLoading" class="flex justify-center py-8">
+              <span class="loading loading-spinner loading-sm opacity-40"></span>
+            </div>
+            <div v-else-if="sysInfoError" class="px-4 py-4 text-xs text-error font-mono">{{ sysInfoError }}</div>
+
+            <template v-else-if="sysInfo">
+              <!-- App & Environment -->
+              <div class="px-4 py-2 border-b border-base-300">
+                <p class="font-mono text-xs font-semibold opacity-50 mb-2">Application</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1">
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">version</span>
+                    <span class="font-semibold">{{ sysInfo.app.version }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">environment</span>
+                    <span :class="sysInfo.app.environment === 'production' ? 'text-success' : 'text-warning'" class="font-semibold">
+                      {{ sysInfo.app.environment }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">debug mode</span>
+                    <span :class="sysInfo.app.debug ? 'text-warning' : 'text-success'" class="font-semibold">
+                      {{ sysInfo.app.debug ? 'ON' : 'OFF' }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono col-span-2 sm:col-span-3">
+                    <span class="opacity-50">base_url</span>
+                    <span class="font-semibold truncate ml-2">{{ sysInfo.app.base_url }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Database -->
+              <div class="px-4 py-2 border-b border-base-300">
+                <p class="font-mono text-xs font-semibold opacity-50 mb-2">Database</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 mb-2">
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">engine</span>
+                    <span class="font-semibold uppercase"
+                      :class="sysInfo.database.engine === 'postgresql' ? 'text-info' : 'text-warning'">
+                      {{ sysInfo.database.engine }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">size</span>
+                    <span class="font-semibold">
+                      {{ sysInfo.database.size != null ? sysInfo.database.size : '—' }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono col-span-2 sm:col-span-1">
+                    <span class="opacity-50">connection</span>
+                    <span class="font-semibold text-xs truncate ml-1">{{ sysInfo.database.url_masked }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono col-span-2 sm:col-span-3">
+                    <span class="opacity-50">version</span>
+                    <span class="font-semibold opacity-80 truncate ml-2 text-xs">{{ sysInfo.database.version }}</span>
+                  </div>
+                </div>
+                <!-- Table counts -->
+                <div class="flex flex-wrap gap-2">
+                  <div v-for="(count, tbl) in sysInfo.database.table_counts" :key="tbl"
+                    class="badge badge-ghost badge-sm font-mono gap-1">
+                    <span class="opacity-60">{{ tbl }}</span>
+                    <span class="font-bold">{{ count }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- AI Model -->
+              <div class="px-4 py-2 border-b border-base-300">
+                <p class="font-mono text-xs font-semibold opacity-50 mb-2">AI Model</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1">
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">status</span>
+                    <span :class="sysInfo.ai.model_loaded ? 'text-success' : 'text-error'" class="font-semibold">
+                      {{ sysInfo.ai.model_loaded ? 'โหลดแล้ว' : 'ไม่พบไฟล์' }}
+                    </span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">device</span>
+                    <span class="font-semibold">{{ sysInfo.ai.model_device }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">confidence</span>
+                    <span class="font-semibold">{{ (sysInfo.ai.confidence * 100).toFixed(0) }}%</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono col-span-2 sm:col-span-3">
+                    <span class="opacity-50">path</span>
+                    <span class="font-semibold opacity-70 truncate ml-2">{{ sysInfo.ai.model_path }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Storage -->
+              <div class="px-4 py-2 border-b border-base-300">
+                <p class="font-mono text-xs font-semibold opacity-50 mb-2">Storage</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 mb-2">
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">snapshots</span>
+                    <span class="font-semibold">{{ sysInfo.storage.snapshot_size_mb }} MB</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">clips</span>
+                    <span class="font-semibold">{{ sysInfo.storage.clip_size_mb }} MB</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">disk free</span>
+                    <span class="font-semibold"
+                      :class="sysInfo.storage.disk_free_gb < 5 ? 'text-error' : sysInfo.storage.disk_free_gb < 20 ? 'text-warning' : 'text-success'">
+                      {{ sysInfo.storage.disk_free_gb }} GB
+                    </span>
+                  </div>
+                </div>
+                <!-- Disk usage bar -->
+                <div class="flex items-center gap-2">
+                  <span class="text-xs opacity-40 font-mono w-8">disk</span>
+                  <progress class="progress progress-xs flex-1"
+                    :class="diskProgressClass(sysInfo.storage)"
+                    :value="sysInfo.storage.disk_used_gb"
+                    :max="sysInfo.storage.disk_total_gb"></progress>
+                  <span class="text-xs font-mono opacity-60 whitespace-nowrap">
+                    {{ sysInfo.storage.disk_used_gb }} / {{ sysInfo.storage.disk_total_gb }} GB
+                  </span>
+                </div>
+              </div>
+
+              <!-- Runtime / Libraries -->
+              <div class="px-4 py-2">
+                <p class="font-mono text-xs font-semibold opacity-50 mb-2">Runtime & Libraries</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1 mb-3">
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">python</span>
+                    <span class="font-semibold">{{ sysInfo.runtime.python_version }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">cpu_count</span>
+                    <span class="font-semibold">{{ sysInfo.runtime.cpu_count }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">arch</span>
+                    <span class="font-semibold">{{ sysInfo.runtime.architecture }}</span>
+                  </div>
+                  <div class="flex justify-between text-xs font-mono col-span-2 sm:col-span-3">
+                    <span class="opacity-50">platform</span>
+                    <span class="font-semibold opacity-70 truncate ml-2">{{ sysInfo.runtime.platform }}</span>
+                  </div>
+                </div>
+                <!-- Library version table -->
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-0.5">
+                  <div v-for="(ver, lib) in sysInfo.runtime.libraries" :key="lib"
+                    class="flex justify-between text-xs font-mono">
+                    <span class="opacity-50">{{ lib }}</span>
+                    <span :class="ver === '?' ? 'opacity-30' : 'font-semibold'">{{ ver }}</span>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
+
         <!-- Notification channels status -->
         <div class="card bg-base-100 border border-base-300 shadow-none">
           <div class="card-body p-0">
@@ -567,7 +740,7 @@ import AppLayout from '@/components/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSystemStore } from '@/stores/system'
 import { useThemeStore, ALL_THEMES } from '@/stores/theme'
-import { usersApi, systemApi } from '@/api/client'
+import { usersApi, systemApi, type SystemInfo } from '@/api/client'
 
 const auth       = useAuthStore()
 const system     = useSystemStore()
@@ -587,8 +760,31 @@ onMounted(() => {
     loadTokenSettings()
     loadQualitySettings()
     loadDetectionSettings()
+    loadSysInfo()
   }
 })
+
+// ── System Info (Admin) ───────────────────────────────────────────────────
+const sysInfo        = ref<SystemInfo | null>(null)
+const sysInfoLoading = ref(false)
+const sysInfoError   = ref('')
+
+async function loadSysInfo() {
+  sysInfoLoading.value = true
+  sysInfoError.value   = ''
+  try {
+    sysInfo.value = await systemApi.getInfo()
+  } catch (e: any) {
+    sysInfoError.value = e?.message ?? 'โหลดข้อมูลระบบไม่สำเร็จ'
+  } finally {
+    sysInfoLoading.value = false
+  }
+}
+
+function diskProgressClass(storage: SystemInfo['storage']) {
+  const pct = (storage.disk_used_gb / storage.disk_total_gb) * 100
+  return pct >= 90 ? 'progress-error' : pct >= 70 ? 'progress-warning' : 'progress-success'
+}
 
 // ── Token settings (ADMIN+) ───────────────────────────────────────────────
 const tokenLoading  = ref(false)

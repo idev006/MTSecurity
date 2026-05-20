@@ -292,8 +292,49 @@ export interface SystemSetting {
   updated_at: string
 }
 
+export interface SystemInfo {
+  app: {
+    name: string
+    version: string
+    environment: string
+    debug: boolean
+    base_url: string
+  }
+  database: {
+    engine: string            // "postgresql" | "sqlite"
+    url_masked: string
+    version: string
+    size: number | string | null
+    table_counts: Record<string, number>
+  }
+  ai: {
+    model_path: string
+    model_loaded: boolean
+    model_device: string
+    confidence: number
+  }
+  storage: {
+    snapshot_dir: string
+    snapshot_size_mb: number
+    clip_dir: string
+    clip_size_mb: number
+    disk_total_gb: number
+    disk_used_gb: number
+    disk_free_gb: number
+  }
+  runtime: {
+    python_version: string
+    platform: string
+    architecture: string
+    cpu_count: number
+    libraries: Record<string, string>
+  }
+  timestamp: string
+}
+
 export const systemApi = {
   getSettings:    () => get<SystemSetting[]>('/system/settings'),
   updateSetting:  (key: string, value: string) =>
     patch<SystemSetting>('/system/settings', { key, value }),
+  getInfo:        () => get<SystemInfo>('/system/info'),
 }

@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
+import os
+import platform
+import shutil
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from api.deps import CurrentUser, DBDep, require
 from models.system_setting import SystemSetting
@@ -180,3 +186,150 @@ async def update_setting(body: SystemSettingUpdate, request: Request, db: DBDep,
         max=meta.get("max"),
         updated_by=existing.updated_by, updated_at=existing.updated_at,
     )
+
+
+# ── System Info (Admin) ───────────────────────────────────────────────────────
+
+def _pkg_version(name: str) -> str:
+    """Return installed package version or '?' if not found."""
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return "?"
+
+
+def _dir_size_mb(path: Path) -> float:
+    """Return total size of a directory in MB, 0 if not exists."""
+    try:
+        total = sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+        return round(total / 1_048_576, 2)
+    except Exception:
+        return 0.0
+
+
+@router.get("/info", dependencies=[require("system:read")])
+async def system_info(request: Request, db: DBDep) -> dict:
+    """
+    Return detailed system information for administrators.
+    Includes database engine, library versions, storage, and environment.
+    """
+    cfg = request.app.state.cfg
+    # Parse dialect from DATABASE_URL without touching the engine object
+    # e.g. "postgresql+asyncpg://..." → "postgresql"
+    #      "sqlite+aiosqlite://..."   → "sqlite"
+    db_url_str: str = cfg.database_url
+    dialect_name: str = db_url_str.split("+")[0].split(":")[0].lower()
+
+    # ── Database version ──────────────────────────────────────────────────────
+    db_version: str = "unknown"
+    db_size_mb: float | None = None
+    try:
+        if dialect_name == "postgresql":
+            row = await db.execute(text("SELECT version()"))
+            db_version = row.scalar_one()
+            row2 = await db.execute(
+                text("SELECT pg_size_pretty(pg_database_size(current_database()))")
+            )
+            db_size_mb = row2.scalar_one()   # already human-readable from pg
+        elif dialect_name == "sqlite":
+            row = await db.execute(text("SELECT sqlite_version()"))
+            db_version = f"SQLite {row.scalar_one()}"
+            # SQLite file size
+            db_url: str = cfg.database_url
+            if "///" in db_url:
+                db_path = Path(db_url.split("///")[-1])
+                if db_path.exists():
+                    db_size_mb = round(db_path.stat().st_size / 1_048_576, 2)
+    except Exception as exc:
+        db_version = f"query error: {exc}"
+
+    # ── Table row counts (lightweight) ───────────────────────────────────────
+    table_counts: dict[str, int] = {}
+    _tables = ["cameras", "zones", "rules", "events", "users", "audit_logs"]
+    for tbl in _tables:
+        try:
+            r = await db.execute(text(f"SELECT COUNT(*) FROM {tbl}"))
+            table_counts[tbl] = r.scalar_one()
+        except Exception:
+            table_counts[tbl] = -1
+
+    # ── Storage ───────────────────────────────────────────────────────────────
+    snapshot_mb = _dir_size_mb(cfg.snapshot_dir)
+    clip_mb     = _dir_size_mb(cfg.clip_dir)
+
+    disk = shutil.disk_usage(str(cfg.snapshot_dir.parent) if cfg.snapshot_dir.parent.exists() else ".")
+    disk_total_gb  = round(disk.total  / 1_073_741_824, 1)
+    disk_used_gb   = round(disk.used   / 1_073_741_824, 1)
+    disk_free_gb   = round(disk.free   / 1_073_741_824, 1)
+
+    # ── AI model ──────────────────────────────────────────────────────────────
+    model_path: Path = cfg.model_path
+    ai_model_ok = model_path.exists()
+
+    # ── Python & library versions ─────────────────────────────────────────────
+    python_version = sys.version.split()[0]   # e.g. "3.12.3"
+
+    libraries = {
+        "fastapi":         _pkg_version("fastapi"),
+        "sqlalchemy":      _pkg_version("sqlalchemy"),
+        "asyncpg":         _pkg_version("asyncpg"),
+        "aiosqlite":       _pkg_version("aiosqlite"),
+        "pydantic":        _pkg_version("pydantic"),
+        "uvicorn":         _pkg_version("uvicorn"),
+        "alembic":         _pkg_version("alembic"),
+        "openvino":        _pkg_version("openvino"),
+        "opencv-python":   (
+            v if (v := _pkg_version("opencv-python-headless")) != "?"
+            else _pkg_version("opencv-python")
+        ),
+        "psutil":          _pkg_version("psutil"),
+        "cryptography":    _pkg_version("cryptography"),
+        "python-jose":     _pkg_version("python-jose"),
+    }
+
+    # ── Environment ───────────────────────────────────────────────────────────
+    return {
+        "app": {
+            "name":        cfg.app_name,
+            "version":     cfg.app_version,
+            "environment": cfg.environment,
+            "debug":       cfg.debug,
+            "base_url":    cfg.base_url,
+        },
+        "database": {
+            "engine":      dialect_name,          # "postgresql" | "sqlite"
+            "url_masked":  _mask_db_url(cfg.database_url),
+            "version":     db_version,
+            "size":        db_size_mb,            # MB (sqlite) or "x MB" string (pg)
+            "table_counts": table_counts,
+        },
+        "ai": {
+            "model_path":     str(cfg.model_path),
+            "model_loaded":   ai_model_ok,
+            "model_device":   cfg.model_device,
+            "confidence":     cfg.ai_confidence_threshold,
+        },
+        "storage": {
+            "snapshot_dir":     str(cfg.snapshot_dir),
+            "snapshot_size_mb": snapshot_mb,
+            "clip_dir":         str(cfg.clip_dir),
+            "clip_size_mb":     clip_mb,
+            "disk_total_gb":    disk_total_gb,
+            "disk_used_gb":     disk_used_gb,
+            "disk_free_gb":     disk_free_gb,
+        },
+        "runtime": {
+            "python_version": python_version,
+            "platform":       platform.platform(),
+            "architecture":   platform.machine(),
+            "cpu_count":      os.cpu_count(),
+            "libraries":      libraries,
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _mask_db_url(url: str) -> str:
+    """Hide password in DATABASE_URL for safe display."""
+    import re
+    return re.sub(r"://([^:]+):([^@]+)@", r"://\1:****@", url)
