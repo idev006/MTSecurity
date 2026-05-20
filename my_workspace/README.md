@@ -207,5 +207,6 @@ Base: `/api/v1/`
 |--------|---------|
 | [doc/PROGRESS.md](doc/PROGRESS.md) | สถานะโครงการ, roadmap, known issues |
 | [doc/DEPLOY.md](doc/DEPLOY.md) | คู่มือ deployment ฉบับสมบูรณ์ |
+| [doc/HTTPS.md](doc/HTTPS.md) | HTTPS setup: Cloudflare Tunnel, mkcert LAN SSL |
 | [doc/BUGFIX_LOG.md](doc/BUGFIX_LOG.md) | ประวัติ bug fix และ feature |
 | [doc/MASTER_BLUEPRINT_BIBLE.md](doc/MASTER_BLUEPRINT_BIBLE.md) | หลักการออกแบบ |

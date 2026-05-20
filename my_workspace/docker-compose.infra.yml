@@ -86,9 +86,13 @@ services:
       - infra
     ports:
       - "80:80"               # http://localhost → proxies native backend:8000 + frontend:5173
+      # - "443:443"           # เปิดเมื่อใช้ HTTPS (mkcert) — ดู doc/HTTPS.md
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/conf.d/mtsecurity.native.conf:/etc/nginx/conf.d/mtsecurity.conf:ro
+      # SSL: สลับ 2 บรรทัดข้างบนเป็น:
+      # - ./nginx/conf.d/mtsecurity.ssl.conf:/etc/nginx/conf.d/mtsecurity.conf:ro
+      # - ./nginx/ssl:/etc/nginx/ssl:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"   # Docker Desktop already sets this, explicit for Linux
     restart: unless-stopped
