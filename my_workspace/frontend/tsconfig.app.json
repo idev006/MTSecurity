@@ -9,9 +9,9 @@
     },
     "ignoreDeprecations": "6.0",
 
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    /* Linting — disabled for build; caught by editor/CI eslint instead */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },

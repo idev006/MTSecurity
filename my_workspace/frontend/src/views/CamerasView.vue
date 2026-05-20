@@ -598,7 +598,7 @@ function recentAlertFor(cameraId: number) {
   const currentMs = now.value
   const recent = eventsStore.events.find(e => e.camera_id === cameraId)
   if (!recent) return null
-  const ageSecs = (currentMs - parseUtcIso(recent.occurred_at ?? recent.timestamp).getTime()) / 1000
+  const ageSecs = (currentMs - parseUtcIso(recent.occurred_at ?? '').getTime()) / 1000
   return ageSecs < 3.0 ? recent : null
 }
 

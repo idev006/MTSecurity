@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 def apply_pragmas(engine: AsyncEngine) -> None:
-    """Register SQLite pragmas via sync event (aiosqlite runs them on connect)."""
+    """Register SQLite pragmas via sync event — no-op for non-SQLite engines."""
+    if engine.dialect.name != "sqlite":
+        return   # PostgreSQL / other — pragmas not applicable
 
     @event.listens_for(engine.sync_engine, "connect")
     def set_pragmas(dbapi_conn, _connection_record):

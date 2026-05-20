@@ -465,7 +465,6 @@ import RuleLogicBuilder from '@/components/RuleLogicBuilder.vue'
 import SchedulePicker from '@/components/SchedulePicker.vue'
 import { useCamerasStore } from '@/stores/cameras'
 import { useToastStore } from '@/stores/toast'
-import { useZonesStore } from '@/stores/zones'
 
 // ── API types & calls ────────────────────────────────────────────────────────
 
@@ -507,7 +506,6 @@ async function apiDelete(path: string): Promise<void> {
 
 const cameras    = useCamerasStore()
 const toastStore = useToastStore()
-const zonesStore = useZonesStore()
 const selectedCamId = ref<number | null>(null)
 const zones = ref<ZoneRead[]>([])
 const rules = ref<RuleRead[]>([])
@@ -524,7 +522,7 @@ const deleteRuleModalOpen = ref(false)
 const deleteTargetRuleId = ref<number | null>(null)
 
 const useAdvancedLogic = ref(false)
-const logicTree = ref({ operator: 'AND', conditions: [] })
+const logicTree = ref<{ operator: 'AND' | 'OR' | 'NOT'; conditions: any[] }>({ operator: 'AND', conditions: [] })
 const ruleSchedule = ref({ start: '00:00', end: '23:59', days: [0, 1, 2, 3, 4, 5, 6] })
 const behaviorParams = ref<Record<string, any>>({})
 

@@ -237,7 +237,7 @@
                   </div>
                   <!-- Hover-reveal actions -->
                   <div class="flex gap-1.5 mt-2">
-                    <button class="btn btn-xs btn-outline btn-primary font-mono text-[9px]" @click="setPrimary(ev.camera_id)">
+                    <button class="btn btn-xs btn-outline btn-primary font-mono text-[9px]" @click="ev.camera_id != null && setPrimary(ev.camera_id)">
                       VIEW
                     </button>
                     <button v-if="ev.status === 'NEW'"
@@ -530,17 +530,6 @@ function getCentroid(coords: any) {
   } catch { return { x: 0, y: 0 } }
 }
 
-function getTrackColor(label: string) {
-  const colors: Record<string, string> = {
-    person: '#ff4757', // Red
-    car: '#eccc68',    // Yellow
-    truck: '#ffa502',  // Orange
-    bicycle: '#2ed573',// Green
-    default: '#1e90ff' // Blue
-  }
-  return colors[label.toLowerCase()] || colors.default
-}
-
 /** Returns the label string that will actually be rendered in the SVG. */
 function getLabelText(track: any): string {
   return hasRecentAlert(primaryId.value!)
@@ -669,15 +658,6 @@ function fmtTime(iso: string) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function sevClass(s: string) {
-  return {
-    critical: 'bg-error text-error-content animate-pulse',
-    high:     'bg-error text-error-content',
-    medium:   'bg-warning text-warning-content',
-    low:      'bg-neutral text-neutral-content',
-  }[s] ?? 'bg-neutral'
-}
-
 function dotColor(state?: string) {
   return {
     ONLINE:       'bg-success',
@@ -700,7 +680,7 @@ function gaugeColor(pct: number) {
   return ''
 }
 
-function handleStreamError(e: Event) {
+function handleStreamError(_e: Event) {
   // Silent fallback
 }
 </script>

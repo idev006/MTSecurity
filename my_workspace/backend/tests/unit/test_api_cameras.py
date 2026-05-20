@@ -20,7 +20,7 @@ async def _seed_admin(db: AsyncSession) -> User:
 
 @pytest.fixture
 async def app():
-    from api.app import create_app
+    from api.app import create_test_app
     from config import Settings
     from db.session import get_session_factory, init_engine
     from models.base import Base
@@ -41,7 +41,7 @@ async def app():
     await bus.start()
     config_svc = ConfigService(get_session_factory, bus)
     state_reg = StateRegistry()
-    app = create_app(cfg, config_svc, state_reg, bus, engine)
+    app = create_test_app(cfg=cfg, config_svc=config_svc, state_reg=state_reg, bus=bus)
 
     factory = get_session_factory()
     async with factory() as session:

@@ -23,19 +23,19 @@ async def _seed_user(db: AsyncSession, username="testadmin", password="Admin1234
 
 @pytest.fixture
 async def app(db_factory):
-    from api.app import create_app
+    from api.app import create_test_app
     from config import Settings
+    from db.session import get_session_factory, init_engine
+    from models.base import Base
     from protocol.message_bus import MessageBus
     from ssot.config_service import ConfigService
     from ssot.state_registry import StateRegistry
-    from db.session import init_engine, get_session_factory
 
     cfg = Settings(
         jwt_secret_key="test-secret-key-at-least-32-characters-long",
         encryption_key="ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=",
     )
     engine = init_engine("sqlite+aiosqlite:///:memory:")
-    from models.base import Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -44,7 +44,7 @@ async def app(db_factory):
     config_svc = ConfigService(get_session_factory, bus)
     state_reg = StateRegistry()
 
-    app = create_app(cfg, config_svc, state_reg, bus, engine)
+    app = create_test_app(cfg=cfg, config_svc=config_svc, state_reg=state_reg, bus=bus)
     yield app
     await bus.stop()
     await engine.dispose()
@@ -110,7 +110,7 @@ class TestLogout:
         token = login.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
 
-        r = await client.post("/api/v1/auth/logout", headers=headers)
+        r = await client.post("/api/v1/auth/logout", headers=headers, json={})
         assert r.status_code == 204
 
         r2 = await client.get("/api/v1/auth/me", headers=headers)

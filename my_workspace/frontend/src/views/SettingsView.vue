@@ -576,6 +576,11 @@ const router     = useRouter()
 
 const tab = ref<'system' | 'display' | 'account'>('system')
 
+async function handleLogout() {
+  await auth.logout()
+  router.push('/login')
+}
+
 onMounted(() => {
   system.fetchHealth()
   if (auth.role === 'SUPERADMIN' || auth.role === 'ADMIN') {

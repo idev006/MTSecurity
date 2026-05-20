@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -257,6 +258,71 @@ def create_app() -> FastAPI:
     application.include_router(ws_router,        prefix=_PREFIX)
 
     return application
+
+
+def create_test_app(
+    cfg: "Any",
+    config_svc: "Any",
+    state_reg: "Any",
+    bus: "Any",
+) -> FastAPI:
+    """Lightweight FastAPI app for integration tests.
+
+    Skips all heavy service initialisation (cameras, AI pipeline, WebSocket hub).
+    Only wires the minimal ``app.state`` required for CRUD-router tests.
+    The caller is responsible for starting/stopping the bus and engine.
+    """
+    from api.middleware.audit import AuditMiddleware
+    from api.routers import auth, cameras, events, health, rules, users, zones
+    from fastapi.middleware.cors import CORSMiddleware
+    from ingestion.frame_buffer import FrameBuffer
+    from slowapi import Limiter
+    from slowapi.util import get_remote_address
+
+    application = FastAPI(title="MTSecurity-Test", version="test")
+    application.add_middleware(
+        CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+    )
+    application.add_middleware(AuditMiddleware)
+
+    limiter = Limiter(key_func=get_remote_address, default_limits=["10000/minute"])
+    application.state.limiter = limiter
+    application.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    # Minimal state — enough for auth, cameras, zones, rules, events, users
+    application.state.cfg          = cfg
+    application.state.config_svc   = config_svc
+    application.state.state_reg    = state_reg
+    application.state.bus          = bus
+    application.state.frame_buffer  = FrameBuffer()
+    application.state.hires_buffer  = FrameBuffer()
+    application.state.stream_buffer = FrameBuffer()
+    application.state.cam_manager   = _NoopCameraManager()
+    application.state.rule_engine   = None
+    application.state.alert_manager = None
+    application.state.ws_hub        = None
+
+    application.include_router(health.router,  prefix=_PREFIX)
+    application.include_router(auth.router,    prefix=_PREFIX)
+    application.include_router(cameras.router, prefix=_PREFIX)
+    application.include_router(zones.router,   prefix=_PREFIX)
+    application.include_router(rules.router,   prefix=_PREFIX)
+    application.include_router(events.router,  prefix=_PREFIX)
+    application.include_router(users.router,   prefix=_PREFIX)
+
+    return application
+
+
+class _NoopCameraManager:
+    """Stub CameraManager — no-ops all methods for test isolation."""
+
+    active_count: int = 0
+
+    async def start_all(self) -> None: ...
+    async def stop_all(self) -> None: ...
+    async def start_camera(self, *a, **kw) -> None: ...   # async in real impl
+    def stop_camera(self, *a, **kw) -> None: ...
+    def get_status(self, camera_id: int) -> None: return None  # type: ignore[return-value]
 
 
 # Module-level app instance — required for ``uvicorn "api.app:app" --reload``

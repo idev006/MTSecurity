@@ -6,7 +6,6 @@ import { resolve } from 'path'
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backendUrl = env.VITE_BACKEND_URL || 'http://localhost:8000'
-  const wsUrl = backendUrl.replace(/^http/, 'ws')
 
   return {
     plugins: [vue(), tailwindcss()],

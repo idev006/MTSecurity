@@ -47,6 +47,10 @@ class _Track:
         self.x1, self.y1 = centroid[0] - 0.05, centroid[1] - 0.1
         self.x2, self.y2 = centroid[0] + 0.05, centroid[1] + 0.1
 
+    @property
+    def bbox(self) -> dict:
+        return {"x1": self.x1, "y1": self.y1, "x2": self.x2, "y2": self.y2}
+
 
 # ── Intrusion ─────────────────────────────────────────────────────────────────
 
@@ -160,7 +164,8 @@ class TestCrowdDensityBehavior:
     def test_triggers_when_count_exceeds_max(self):
         b = CrowdDensityBehavior()
         track = _Track()
-        cfg = _cfg(dwell_threshold_seconds=3, zone_count=5)  # max=3, count=5
+        # max_persons=3 lives in behavior_params; zone_count=5 passed via config
+        cfg = _cfg(behavior_params={"max_persons": 3}, zone_count=5)
         r = b.evaluate(track, 1, 1, _zone_mgr(), _dwell(), cfg)
         assert r.triggered
         assert r.metadata["zone_count"] == 5
